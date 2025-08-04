@@ -1,0 +1,11 @@
+.vscode
+Manifest.toml
+
+src/SIDISStructFunc/N*
+src/TMDGrid
+test
+
+*.ipynb
+*.nb
+*.md
+*.png
