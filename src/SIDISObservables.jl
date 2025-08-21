@@ -1,28 +1,92 @@
 #= Part of SIDISXsec.jl                                                                           =#
-#= SIDIS observables                                                                              =#
+#= Utilities for calculating SIDIS observables                                                    =#
 
-get_sidis_var_ϕh(var::SidisVar, ϕh) =
-    SidisVar(var.M, var.Mh, var.xB, var.y, var.Q², NaN, NaN, NaN, var.zh,
-        cos(ϕh), sin(ϕh), var.PhT²)
-
-"""
-    SIDIS_mul_xB_Q²_zh_PhT²(data::SidisData, sf′::SidisStructFunc,
-        var::SidisVar, μ², opt::Options=_opt)::Float64
-
-SIDIS multiplicity `[ dσ /( dxB dQ² dzh dPhT² ) ]/[ dσ /( dxB dQ² ) ]`.
-Only `FUUL` and `FUUT` are used. \\
-(polarizations are not considered)
-"""
-function SIDIS_mul_xB_Q²_zh_PhT²(data::SidisData, sf′::SidisStructFunc,
-        var::SidisVar, μ², opt::Options=_opt)::Float64
-    # αEM is not required
-    DIS_xsec = DIS_xsec_xB_Q²(data, var, μ², opt)
-    if iszero(DIS_xsec) return 0 end
-    sf = SidisStructFunc(sf′.FUUL, sf′.FUUT, zerosf, zerosf)
-    SIDIS_xsec = 2π * SIDIS_xsec_xB_Q²_zh_ϕh_PhT²(sf, var, μ², opt)
-    return SIDIS_xsec / DIS_xsec
+function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
+    M, Mh, xB, y, Q², λ, d, SL, _, _, zh, _, _, PhT² = exposestruct(var)
+    return SidisVar(M, Mh,
+        xB, y, Q², λ, d, SL, cos(ϕS), sin(ϕS),
+        zh, cos(ϕh), sin(ϕh), PhT²)
 end
 
+const _trapzNstart = 2
+const _trapznmax = 6
+const _trapzϕ0 = tuple((
+    i * 2π/_trapzNstart
+    for i ∈ 0:_trapzNstart-1
+)...)
+const _trapzϕ = tuple((
+    let N = _trapzNstart * 2^n
+        tuple((
+            i * 2π/N
+            for i ∈ 1:2:N
+        )...)
+    end for n ∈ 1:_trapznmax
+)...)
+"Calculate `∫(0,2π) f(ϕ) dϕ` using trapezoidal rule."
+function trapzϕ(f, rtol=_rtol)::Float64
+    set_prev = mean(f(ϕ) for ϕ ∈ _trapzϕ0)
+    set = 0.0
+    rerr = 1.0
+    for n ∈ 1:_trapznmax
+        set_next = mean(f(ϕ) for ϕ ∈ _trapzϕ[n])
+        set = ( set_prev + set_next )/2
+        rerr = abs((set - set_prev)/set)
+        if rerr ≤ rtol
+            return 2π * set
+        end
+        set_prev = set
+    end
+    @warn "rerr = $rerr"
+    return 2π * set
+end
+const _trapzϕϕ0 = tuple((
+    tuple( i * 2π/_trapzNstart, j * 2π/_trapzNstart )
+    for j ∈ 0:_trapzNstart-1, i ∈ 0:_trapzNstart-1
+)...)
+const _trapzϕϕ = tuple((
+    let N = _trapzNstart * 2^n
+        filter(!isnothing, tuple((
+            isodd(i) && isodd(j) ? nothing :
+            tuple( i * 2π/N , j * 2π/N )
+            for j ∈ 0:N-1, i ∈ 0:N-1
+        )...))
+    end for n ∈ 1:_trapznmax
+)...)
+"Calculate `∬(0,2π)² f(ϕ₁,ϕ₂) dϕ₁dϕ₂` using trapezoidal rule."
+function trapzϕϕ(f, rtol=_rtol)::Float64
+    # anisotropic refinement may be used [ChatGPT]
+    set_prev = mean(f(ϕ...) for ϕ ∈ _trapzϕϕ0)
+    set = 0.0
+    rerr = 1.0
+    for n ∈ 1:_trapznmax
+        set_next = mean(f(ϕ...) for ϕ ∈ _trapzϕϕ[n])
+        set = ( set_prev + 3set_next )/4
+        rerr = abs((set - set_prev)/set)
+        if rerr ≤ rtol
+            return (2π)^2 * set
+        end
+        set_prev = set
+    end
+    @warn "rerr = $rerr"
+    return (2π)^2 * set
+end
+
+"""
+    SIDIS_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc,
+        var::SidisVar, μ², opt::Options=_opt)::Float64
+
+SIDIS multiplicity `[ dσ /( dxB dQ² dzh dPhT² ) ]/[ dσ /( dxB dQ² ) ]`. \\
+Only `FUUL` and `FUUT` are used (without `FLL`).
+"""
+function SIDIS_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc,
+        var::SidisVar, μ², opt::Options=_opt)::Float64
+    var′ = change_sidis_var_ϕ(var, NaN, NaN)
+    sf′ = SidisStructFunc(sf.FUUL, sf.FUUT, zerosf, zerosf)
+    DIS_xsec = DIS_xsec_xB_Q²_ϕS(data, var′, μ², opt)
+    if iszero(DIS_xsec) return 0 end
+    SIDIS_xsec = 2π * SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf′, var′, μ², opt)
+    return SIDIS_xsec / DIS_xsec
+end
 """
     SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::SidisVar, rc::RCData,
         μ², opt::Options=_opt)::Float64
@@ -32,45 +96,48 @@ SIDIS multiplicity `[ dσ /( dxB dQ² dzh dPhT² ) ]/[ dσ /( dxB dQ² ) ]` with
 """
 function SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::SidisVar, rc::RCData,
         μ², opt::Options=_opt)::Float64
-    # αEM is not required
-    DIS_xsec = DISRC_xsec_xB_Q²(data, var, rc, μ², opt)
+    DIS_xsec = DISRC_xsec_xB_Q²_ϕS(data, var, rc, μ², opt)
     if iszero(DIS_xsec) return 0 end
-    SIDIS_xsec = 2 * quadgk( # [0,π] and [-π,0] are symmetric
-        ϕh -> SIDISRC_xsec_xB_Q²_zh_ϕh_PhT²(sf, get_sidis_var_ϕh(var, ϕh), rc, μ², opt),
-        0, π, rtol=opt.rtol)[1]
+    SIDIS_xsec = trapzϕ(ϕh ->
+        SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, NaN, ϕh), rc, μ², opt),
+        opt.rtol)
     return SIDIS_xsec / DIS_xsec
 end
 
 """
-    SIDIS_AUUcosϕh_xB_Q²_zh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
+    SIDISRC_Aϕh_xB_Q²_zh_PhT²(trig::Function,
+        sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
 
-SIDIS asymmetry `AUUcosϕh = 2⟨cosϕh⟩`.
+SIDIS azimuthal asymmetry `2⟨trig(ϕh)⟩`. \\
+(polarizations are not considered)
 """
-function SIDIS_AUUcosϕh_xB_Q²_zh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
+function SIDISRC_Aϕh_xB_Q²_zh_PhT²(trig::Function,
+        sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    M, _, xB, y, Q², _, _, _, zh, _, _, PhT² = exposestruct(var)
-    ε = get_ε(xB, y, Q², M)
-    qT² = get_qT²(zh, PhT²)
-    return √(2ε*(1+ε)) * sf.FUUcosϕh( xB, Q², zh, qT², μ², opt.rtol) /
-        ( ε * sf.FUUL(xB, Q², zh, qT², μ², opt.rtol)
-        +     sf.FUUT(xB, Q², zh, qT², μ², opt.rtol) )
+    denom = trapzϕ(ϕh ->
+        SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, NaN, ϕh), rc, μ², opt),
+        opt.rtol)
+    numr = trapzϕ(ϕh ->
+        trig(ϕh) * SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, NaN, ϕh), rc, μ², opt),
+        opt.rtol)
+    return 2 * numr / denom
 end
-
 """
-    SIDISRC_AUUcosϕh_xB_Q²_zh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+    SIDISRC_AϕSϕh_xB_Q²_zh_PhT²(trig::Function,
+        sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
 
-SIDIS asymmetry `AUUcosϕh = 2⟨cosϕh⟩` with radiative corrections.
+SIDIS azimuthal asymmetry `2⟨trig(ϕS,ϕh)⟩`.
 """
-function SIDISRC_AUUcosϕh_xB_Q²_zh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+function SIDISRC_AϕSϕh_xB_Q²_zh_PhT²(trig::Function,
+        sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    # αEM is not required
-    denom = 2 * quadgk( # [0,π] and [-π,0] are symmetric
-        ϕh -> SIDISRC_xsec_xB_Q²_zh_ϕh_PhT²(sf, get_sidis_var_ϕh(var, ϕh), rc, μ², opt),
-        0, π, rtol=opt.rtol)[1]
-    numr = 2 * quadgk( # [0,π] and [-π,0] are symmetric
-        ϕh -> cos(ϕh) * SIDISRC_xsec_xB_Q²_zh_ϕh_PhT²(sf, get_sidis_var_ϕh(var, ϕh), rc, μ², opt),
-        0, π, rtol=opt.rtol)[1]
-    return numr / denom
+    denom = trapzϕ(ϕS -> trapzϕ(ϕh ->
+        SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, ϕS, ϕh), rc, μ², opt),
+        opt.rtol), opt.rtol)
+    numr = trapzϕ(ϕS -> trapzϕ(ϕh ->
+        trig(ϕS,ϕh) * SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, ϕS, ϕh), rc, μ², opt),
+        opt.rtol), opt.rtol)
+    return 2 * numr / denom
 end

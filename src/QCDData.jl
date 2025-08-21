@@ -76,16 +76,18 @@ function get_αs(qcd_data::Ptr{Cvoid}, μ²::Real)::Float64
 end
 
 """
-    get_qcd_density(qcd_data::Ptr{Cvoid}, id, μ²)::Function
+    get_qcd_density(qcd_data::Ptr{Cvoid}, id, μ²,
+        conj=false, A=1, Z=1)::Function
 
-Get PDF or FF at scale `μ²`, as f(x). \\
-`x` is not constrained to be in `(0,1)`.
+Get PDF or FF at scale `μ²`, as f(x).
+(`x` is not constrained to be in `(0,1)`)
 """
-function get_qcd_density(qcd_data::Ptr{Cvoid}, id::Integer, μ²::Real)::Function
-    x -> 1/x * xfxQ2(qcd_data, id, x, μ²)
-    #= x -> 0<x && x<1 ?
-        1/x * xfxQ2(qcd_data, id, x, μ²) :
-        throw(DomainError(x, "momentum fraction out of range (QCD)")) =#
+function get_qcd_density(qcd_data::Ptr{Cvoid}, id::Integer, μ²::Real,
+        conj=false, A=1, Z=1)::Function
+    x -> 1/x * (
+        +    Z  * xfxQ2(qcd_data, (-1)^conj *          id,  x, μ²)
+        + (A-Z) * xfxQ2(qcd_data, (-1)^conj * iso_code(id), x, μ²)
+        )/A
 end
 
 #= TMDGrid ========================================================================================#
@@ -113,7 +115,7 @@ struct TMDGrid
             end
         end
         if eltype(values) ≡ TMDGridFloat
-        new(vars, values)
+            new(vars, values)
         else
             new(vars, TMDGridFloat.(values))
         end

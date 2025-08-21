@@ -4,6 +4,7 @@ Manifest.toml
 src/SIDISStructFunc/N*
 src/TMDGrid
 test
+_*
 
 *.ipynb
 *.nb

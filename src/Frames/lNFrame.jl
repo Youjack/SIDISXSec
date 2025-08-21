@@ -5,13 +5,14 @@ using ..SIDISXSec
 # functions are not exported
 
 function get_l′T²(var::SidisVar)
-    M, _, xB, y, Q², _, _, _, _, _, _, _ = exposestruct(var)
+    M, xB, y, Q² = let v=var; v.M, v.xB, v.y, v.Q² end
     γ² = get_γ²(xB, Q², M)
     return ( 1 - y - y^2 * γ² /4 ) * Q²
 end
 
 function get_PhT²(var::SidisVar)
-    M, Mh, xB, y, Q², _, _, _, zh, cosϕh, _, PhT²_γN = exposestruct(var)
+    M, Mh, xB, y, Q², zh, cosϕh, PhT²_γN = let v=var
+        v.M, v.Mh, v.xB, v.y, v.Q², v.zh, v.cosϕh, v.PhT² end
     γ²  = get_γ²(xB, Q², M)
     lT²_γN = Q² * ( 1 - y - y^2 * γ² /4 )/( y^2 * (1 + γ²) )
     q_dot_Ph = 1/γ² * ( zh * Q² - √( (1 + γ²) * Q² * ( zh^2 * Q² - γ² * (Mh^2 + PhT²_γN) ) ) )
