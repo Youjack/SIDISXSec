@@ -10,7 +10,8 @@ export iso_code, iso_list
 export get_pdf_toy
 export get_qcd_data, get_αs, get_qcd_density
 
-export TMDGrid, write_tmdgrid, read_tmdgrid, interpolate_tmdgrid
+export TMDGrid, TMDGridFloat
+export write_tmdgrid, read_tmdgrid, interpolate_tmdgrid
 
 const num_quark = 10
 const quark_name     =     ( L"u"      , L"\bar{u}", L"d"      , L"\bar{d}", L"s"      , L"\bar{s}", L"c"      , L"\bar{c}" , L"b"      , L"\bar{b}" )
@@ -91,26 +92,31 @@ end
 
 const TMDGRID_PATH = split(ENV["TMDGRID_PATH"], ":")[1]
 const VarGrid = @NamedTuple{name::String, type::String, start::Float64, stop::Float64, length::Int}
+const TMDGridFloat = Float32
 
 """
 Grid to store TMD data.
 - `vars = [(name::String, type::String, start::Float64, stop::Float64, length::Int), ...]`
-- `values` is a multi-dimensional array. It mimics the function `values(var1, var2, ...)`.
+- `values` is a multi-dimensional array. It mimics the function `values(var1, var2, ...)::TMDGridFloat`.
 """
 struct TMDGrid
     vars :: Vector{VarGrid}
     values
     function TMDGrid(vars, values::AbstractArray)
         size_values = size(values)
-        if length(vars) != length(size_values)
-            throw(ErrorException("length(vars) != length(size(values))"))
+        if length(vars) ≠ length(size_values)
+            throw(ErrorException("length(vars) ≠ length(size(values))"))
         end
         for n ∈ eachindex(vars)
-            if vars[n].length != size_values[n]
-                throw(ErrorException("vars[n].length != size(values)[n]"))
+            if vars[n].length ≠ size_values[n]
+                throw(ErrorException("vars[n].length ≠ size(values)[n]"))
             end
         end
+        if eltype(values) ≡ TMDGridFloat
         new(vars, values)
+        else
+            new(vars, TMDGridFloat.(values))
+        end
     end
 end
 Base.show(io::IO, tmdgrid::TMDGrid) = print(io,
@@ -118,9 +124,9 @@ Base.show(io::IO, tmdgrid::TMDGrid) = print(io,
 )
 
 const _sigdigits = 8
-round2str(x, sigdigits) = Printf.format(Printf.Format("%$(sigdigits+8).$(sigdigits-1)E"), x)
+round2str(x) = Printf.format(Printf.Format("%$(_sigdigits+8).$(_sigdigits-1)E"), x)
 
-function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.", sigdigits=_sigdigits)
+function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.")
     open(joinpath(TMDGRID_PATH, name*".tmdgrid"), "w") do io
         # write description
         write(io, desc*"\n")
@@ -129,21 +135,14 @@ function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.", s
             write(io, rpad(var_grid.name, 10))
             write(io, ":")
             write(io, lpad(var_grid.type, 10))
-            write(io, round2str(var_grid.start, sigdigits))
-            write(io, round2str(var_grid.stop,  sigdigits))
+            write(io, round2str(var_grid.start))
+            write(io, round2str(var_grid.stop))
             write(io, lpad("$(var_grid.length)", 5))
             write(io, "\n")
         end
-        # write values
-        col = 1
-        for I ∈ CartesianIndices(tmdgrid.values)
-            if col != Tuple(I)[end]
-                write(io, "\n")
-                col += 1
-            end
-            write(io, round2str(tmdgrid.values[I], sigdigits))
-        end
-        write(io, "\n")
+        # write values as binaries (customizable `TMDGridFloat`?)
+        write(io, "values($TMDGridFloat):\n")
+        write(io, tmdgrid.values)
     end
     return nothing
 end
@@ -155,24 +154,23 @@ function read_tmdgrid(name::String)::TMDGrid
         # read vars
         vars = Vector{VarGrid}(undef, 0)
         var_lengths = Vector{Int}(undef, 0)
-        while (split_line = split(readline(io)))[2] == ":"
+        while true
+            line = readline(io)
+            if startswith(line, "values") break end
+            split_line = split(line)
             var_grid = (
                 name = split_line[1], type = split_line[3],
-                start = parse(Float64, split_line[4]), stop = parse(Float64, split_line[5]),
-                length = parse(Int, split_line[6]))
+                start  = parse(Float64, split_line[4]),
+                stop   = parse(Float64, split_line[5]),
+                length = parse(Int,     split_line[6]))
             push!(vars, var_grid)
             push!(var_lengths, var_grid.length)
         end
-        # read values
+        # read values as binaries (customizable `TMDGridFloat`?)
         values_size = Tuple(var_lengths)
         values_ndims = length(values_size)
-        values = Array{Float64,values_ndims}(undef, values_size)
-        line_size = Tuple(@view var_lengths[1:end-1])
-        for col ∈ 1:values_size[end]
-            selectdim(values, values_ndims, col) .=
-                reshape(parse.(Float64, split_line), line_size)
-            split_line = split(readline(io))
-        end
+        values = Array{TMDGridFloat,values_ndims}(undef, values_size)
+        read!(io, values)
         return TMDGrid(vars, values)
     end
 end
@@ -180,9 +178,9 @@ end
 function get_node(x, var_grid::VarGrid)::Float64
     xl, xu, L = var_grid.start, var_grid.stop, var_grid.length
     if     var_grid.type == "lin"
-        return round(( (xu-x) + L * (x-xl) )/ (xu-xl), sigdigits=8)
+        return round(( (xu-x) + L * (x-xl) )/ (xu-xl), sigdigits=_sigdigits)
     elseif var_grid.type == "log"
-        return round(( log(xu/x) + L * log(x/xl) )/ log(xu/xl), sigdigits=8)
+        return round(( log(xu/x) + L * log(x/xl) )/ log(xu/xl), sigdigits=_sigdigits)
     else
         throw(ErrorException("get_node: unkown VarGrid type `$(var_grid.type)`."))
     end
