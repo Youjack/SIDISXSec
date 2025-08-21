@@ -44,7 +44,7 @@ function _FUUT_asym(αs::Function, f::Function, D::Function, xB, Q², zh, qT², 
         ), 1:num_quark)
 end
 
-#= (using LHASplitExpand) =========================================================================#
+#= (using LHASplitExtend) =========================================================================#
 
 "pid of convolution with splitting kernel"
 extpid_1(pid, order)::Int = 1000pid + sign(pid)*( 10 + order )
@@ -71,8 +71,8 @@ function FUUT_WY(FUUT_tmd::Function, FUUT_coll::Function,
         αs::Function, extf::Function, extD::Function,
         xB, Q², zh, qT², μ², rtol=_rtol)::Float64
     qT, Q = √qT², √Q²
-    tmd()  = FUUT_tmd(                 xB, Q², zh, qT², μ², rtol=rtol)
-    coll() = FUUT_coll(                xB, Q², zh, qT², μ², rtol=rtol)
+    tmd()  = FUUT_tmd(                 xB, Q², zh, qT², μ², rtol)
+    coll() = FUUT_coll(                xB, Q², zh, qT², μ², rtol)
     asym() = FUUT_asym(αs, extf, extD, xB, Q², zh, qT², μ²)
     return (
         qT/Q < 1 ? Ξ(qT/Q) * tmd() : 0
