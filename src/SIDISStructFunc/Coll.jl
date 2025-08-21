@@ -56,17 +56,17 @@ function _CUU_f_D(αs::Function, f::Function, D::Function, CUU::Function,
         zmin, 1.0, rtol=rtol)[1]
 end
 function _FUU_coll(αs::Function, f::Function, D::Function, CUU::Function,
-        xB, Q², zh, qT², μ²; rtol=_rtol)::Float64
+        xB, Q², zh, qT², μ², rtol=_rtol)::Float64
     1/(2π)^3 * xB/(2zh^2*Q²) * _CUU_f_D(αs, f, D, CUU, xB, zh, qT²/Q², μ², rtol)
 end
 
 function _get_sf_coll(data::SidisData)::SidisStructFunc
     αs, f, D = data.αs, data.f, data.D
     return SidisStructFunc(
-        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUL,      xB, Q², zh, qT², μ², rtol=rtol),
-        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUT,      xB, Q², zh, qT², μ², rtol=rtol),
-        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUcosϕh,  xB, Q², zh, qT², μ², rtol=rtol),
-        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUcos2ϕh, xB, Q², zh, qT², μ², rtol=rtol),
+        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUL,      xB, Q², zh, qT², μ², rtol),
+        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUT,      xB, Q², zh, qT², μ², rtol),
+        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUcosϕh,  xB, Q², zh, qT², μ², rtol),
+        (xB, Q², zh, qT², μ², rtol=_rtol) -> _FUU_coll(αs, f, D, CUUcos2ϕh, xB, Q², zh, qT², μ², rtol),
     )
 end
 
@@ -77,6 +77,7 @@ include("../TMDGrid/generate_collgrid.jl")
 function FUU_coll(CUUT_f_D_grid::Function, xB, Q², zh, qT², μ²)::Float64
     qT²oQ², R, A = grid_encode(xB, zh, qT²/Q²)
     round3(x) = round(x, sigdigits=3)
+    # use ≈ ?
     # μ²
     if μ² < μ²_low - _sqrteps || μ² > μ²_up + _sqrteps
         throw(ErrorException("μ² = $(round3(μ²)) out of bounds [$(round3(μ²_low)),$(round3(μ²_up))]."))
@@ -111,13 +112,14 @@ function FUU_coll(CUUT_f_D_grid::Function, xB, Q², zh, qT², μ²)::Float64
 end
 
 function get_sf_coll(name::String)::SidisStructFunc
+    CUUL_f_D_grid     = interpolate_tmdgrid(read_tmdgrid("FUUL_coll_$name"))
     CUUT_f_D_grid     = interpolate_tmdgrid(read_tmdgrid("FUUT_coll_$name"))
     CUUcosϕh_f_D_grid = interpolate_tmdgrid(read_tmdgrid("FUUcosϕh_coll_$name"))
     return SidisStructFunc(
-        SIDISXSec.zerosf,
-        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUT_f_D_grid,     xB, Q², zh, qT², μ²),
-        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUcosϕh_f_D_grid, xB, Q², zh, qT², μ²),
-        SIDISXSec.zerosf,
+        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUL_f_D_grid,     xB, Q², zh, qT², #= μ² =#Q²),
+        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUT_f_D_grid,     xB, Q², zh, qT², #= μ² =#Q²),
+        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUcosϕh_f_D_grid, xB, Q², zh, qT², #= μ² =#Q²),
+        (xB, Q², zh, qT², μ², rtol=0.0) -> FUU_coll(CUUL_f_D_grid,     xB, Q², zh, qT², #= μ² =#Q²)/2,
     )
 end
 
