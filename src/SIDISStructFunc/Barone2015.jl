@@ -7,7 +7,7 @@ Part of SIDISStructFunc.jl
 module Barone2015
 
 using ..SIDISXSec
-using ..SIDISXSec.Constants
+using ..SIDISXSec.QCDData
 
 export get_sf_barone2015
 
@@ -98,7 +98,7 @@ function FUUcos2ϕh(f::Function, D::Function, xB, Q², zh, qT², μ²)::Float64
         ΔD_prefac(i, zh) * D(quark_code[i], zh, μ²) / MC, 1:4) *
         exp(- PhT²/PhT²avgBM)/(π*PhT²avgBM^3) *
         zh * pT²avgBM^2*PT²avgC^2/(pT²avg*PT²avg)
-    return #= cahn + =# BM
+    return cahn + BM
 end
 
 function get_sf_barone2015(data::SidisData)::SidisStructFunc
