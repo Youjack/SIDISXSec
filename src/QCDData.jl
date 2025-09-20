@@ -149,8 +149,13 @@ function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.")
     return nothing
 end
 
-function read_tmdgrid(name::String)::TMDGrid
-    open(joinpath(TMDGRID_PATH, name*".tmdgrid"), "r") do io
+function read_tmdgrid(name::String)::Union{TMDGrid,Nothing}
+    filename = joinpath(TMDGRID_PATH, name*".tmdgrid")
+    if !isfile(filename)
+        @warn "TMDGrid \"$name\" not found, will be 0."
+        return nothing
+    end
+    open(filename, "r") do io
         readline(io) # skip description
         split_line::Vector{SubString{String}} = Vector{SubString{String}}(undef, 0)
         # read vars
@@ -187,7 +192,8 @@ function get_node(x, var_grid::VarGrid)::Float64
         throw(ErrorException("get_node: unkown VarGrid type `$(var_grid.type)`."))
     end
 end
-function interpolate_tmdgrid(tmdgrid::TMDGrid)::Function
+function interpolate_tmdgrid(tmdgrid::Union{TMDGrid,Nothing})::Function
+    if isnothing(tmdgrid) return (xs...) -> 0.0 end
     itp = interpolate(tmdgrid.values, BSpline(Cubic(Line(OnGrid()))))
     return (xs...) -> itp((get_node(xs[n], tmdgrid.vars[n]) for n ∈ eachindex(xs))...)
 end

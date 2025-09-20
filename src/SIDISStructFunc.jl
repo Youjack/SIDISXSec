@@ -1,4 +1,4 @@
-#= Part of SIDISXsec.jl                                                                           =#
+#= Part of SIDISXSec.jl                                                                           =#
 #= SIDIS structure functions                                                                      =#
 # Following conventions in [bacchetta2007semiinclusive]
 
@@ -27,7 +27,8 @@ SidisStructFunc(FUUL, FUUT, FUUcosϕh, FUUcos2ϕh) = SidisStructFunc(
     zerosf, zerosf, zerosf,
     zerosf
 )
-get_sf_zero() = SidisStructFunc(zerosf, zerosf, zerosf, zerosf)
+SidisStructFunc(FUUT) = SidisStructFunc(zerosf, FUUT, zerosf, zerosf)
+get_sf_zero() = SidisStructFunc(zerosf)
 
 #= TMD factorization ==============================================================================#
 

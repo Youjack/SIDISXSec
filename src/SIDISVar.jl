@@ -1,4 +1,4 @@
-#= Part of SIDISXsec.jl                                                                           =#
+#= Part of SIDISXSec.jl                                                                           =#
 #= SIDIS variables                                                                                =#
 
 # DIS variables
@@ -84,6 +84,8 @@ DisVar(M, xB, y, Q², λ, d, SL, cosϕS, sinϕS) =
     SidisVar(M, NaN, xB, y, Q², λ, d, SL, cosϕS, sinϕS, NaN, NaN, NaN, NaN)
 DisVar(M, xB, y, Q²) =
     SidisVar(M, NaN, xB, y, Q², 0, 0, 0, NaN, NaN, NaN, NaN, NaN, NaN)
+DisVar(v::SidisVar) =
+    DisVar(v.M, v.xB, v.y, v.Q², v.λ, v.d, v.SL, v.cosϕS, v.sinϕS)
 
 """
     above_dis_threshold(var::SidisVar)::Bool
@@ -112,12 +114,13 @@ include("Frames/lNFrame.jl")
 
 #= QED distortion =================================================================================#
 
-get_ξmin(xB, y, ζ) = (1 - y)/( ζ - xB * y )
-get_ζmin(xB, y   ) = 1 - (1 - xB) * y
+get_ξmin(xB, y, ζ) = (1 - y)/( ζ - xB * y ) # = get_ξmin(xB, y, 0, ζ)
+get_ζmin(xB, y   ) = 1 - (1 - xB) * y       # = get_ζmin(xB, y, 0   )
 get_ξmin(xB, y, zh, ζ) = max( get_ξmin(xB, y, ζ), y * zh + (1 - y)/ζ   )
 get_ζmin(xB, y, zh   ) = max( get_ζmin(xB, y   ), (1 - y)/(1 - y * zh) )
 
 bound0(val) = max(0, val)
+bound1(val) = min(val, 1)
 boundpm1(val) = clamp(val, -1, +1)
 
 """
@@ -146,8 +149,8 @@ function get_sidis_hat_var(var::SidisVar, ξ, ζ)::SidisVar
     ϵ_l_Ph_P_q = iszero(PhT²) ? 0. : - √( (1 + 1/γ²) * lT² * PhT² * M^2 * Q² ) * sinϕh
     
     # hat variables
-    x̂B = ξ * xB * y /( ξ * ζ - (1 - y) )
-    ẑh = ζ * zh * y /( ξ * ζ - (1 - y) )
+    x̂B = ξ * xB * y /( ξ * ζ - (1 - y) ) |> bound1
+    ẑh = ζ * zh * y /( ξ * ζ - (1 - y) ) |> bound1
     ŷ  = 1 - (1 - y)/(ξ * ζ)
     Q̂² = ξ/ζ * Q²
     l̂_dot_S  = ξ * l_dot_S

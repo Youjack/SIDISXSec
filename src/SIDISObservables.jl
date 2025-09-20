@@ -1,4 +1,4 @@
-#= Part of SIDISXsec.jl                                                                           =#
+#= Part of SIDISXSec.jl                                                                           =#
 #= Utilities for calculating SIDIS observables                                                    =#
 
 function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
@@ -9,7 +9,7 @@ function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
 end
 
 const _trapzNstart = 2
-const _trapznmax = 6
+const _trapznmax = 4
 const _trapzϕ0 = tuple((
     i * 2π/_trapzNstart
     for i ∈ 0:_trapzNstart-1
@@ -36,7 +36,7 @@ function trapzϕ(f, rtol=_rtol)::Float64
         end
         set_prev = set
     end
-    @warn "rerr = $rerr"
+    @warn "trapzϕ: rerr = $rerr, sampled points: $(_trapzNstart^(_trapznmax+1))"
     return 2π * set
 end
 const _trapzϕϕ0 = tuple((
@@ -67,7 +67,7 @@ function trapzϕϕ(f, rtol=_rtol)::Float64
         end
         set_prev = set
     end
-    @warn "rerr = $rerr"
+    @warn "trapzϕϕ: rerr = $rerr"
     return (2π)^2 * set
 end
 
