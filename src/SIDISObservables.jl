@@ -96,11 +96,32 @@ SIDIS multiplicity `[ dσ /( dxB dQ² dzh dPhT² ) ]/[ dσ /( dxB dQ² ) ]` with
 """
 function SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::SidisVar, rc::RCData,
         μ², opt::Options=_opt)::Float64
+    # DIS
     DIS_xsec = DISRC_xsec_xB_Q²_ϕS(data, var, rc, μ², opt)
     if iszero(DIS_xsec) return 0 end
-    SIDIS_xsec = trapzϕ(ϕh ->
-        SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, change_sidis_var_ϕ(var, NaN, ϕh), rc, μ², opt),
-        opt.rtol)
+    # SIDIS
+    xB, y, zh = let v=var; v.xB, v.y, v.zh end
+    ξmx, ξmz = get_ξmins(y, xB, zh); ξmxz = max(ξmx,ξmz)
+    ζmx, ζmz = get_ζmins(y, xB, zh); ζmxz = max(ζmx,ζmz)
+    _, fl, Ifl, _, _, Dl, IDl = exposestruct(rc)
+    x̂sec(ϕh) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(
+        sf, change_sidis_var_ϕ(var, NaN, ϕh), μ², opt, ΣLEPSPIN)
+    Iflξmxz, IDlζmxz = Ifl(ξmxz,μ²), IDl(ζmxz,μ²)
+    SIDIS_xsec_corner = quadgk(ϕh ->
+        2 * Iflξmxz * IDlζmxz * x̂sec(ϕh)(1.,1.),
+            0,π, rtol=opt.rtol)[1]
+    SIDIS_xsec = SIDIS_xsec_corner
+    SIDIS_xsec_ξedge = hcubature(X ->
+        2 * IDlζmxz * RCξedge(ξ->fl(ξ,μ²), x̂sec(X[1]), ξmxz)(X[2]),
+            (0,0), (π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1]
+    SIDIS_xsec_ζedge = hcubature(X ->
+        2 * Iflξmxz * RCζedge(ζ->Dl(ζ,μ²), x̂sec(X[1]), ζmxz)(X[2]),
+            (0,0), (π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1]
+    SIDIS_xsec += SIDIS_xsec_ξedge + SIDIS_xsec_ζedge
+    SIDIS_xsec_bulk = hcubature(X ->
+        2 * RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), ξmx, ξmxz, ζmz, ζmxz)(X[2],X[3]),
+            (0,0,0),(π,1,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1]
+    SIDIS_xsec += SIDIS_xsec_bulk
     return SIDIS_xsec / DIS_xsec
 end
 

@@ -18,7 +18,8 @@ export get_e⁻_data, get_μ⁻_data
 export get_s_from_Ebeam, get_s, get_xB, get_y, get_Q², get_γ², get_ε, get_W²
 export get_qT², get_PhT², get_qT²oQ²max
 export get_ϕ
-export get_ξmin, get_ζmin
+export get_ξmin_xB, get_ξmin_zh, get_ξmins
+export get_ζmin_xB, get_ζmin_zh, get_ζmins
 export above_dis_threshold, above_sidis_threshold
 
 export SidisVar, DisVar
@@ -42,10 +43,10 @@ const _order = 7
     return Expr(:tuple, [:(S.$field) for field ∈ fields]...)
 end
 
-function quadgk(f, a, b; rtol=_rtol)::Tuple{Float64,Float64}
+function quadgk(f, a, b; rtol=_rtol, atol=0)::Tuple{Float64,Float64}
     # `quadgk` also calls `handle_infinities` !!!
     QuadGK.do_quadgk(f, (Float64(a),Float64(b)),
-        7, nothing, rtol, 10^7, QuadGK.norm, nothing, nothing)
+        7, atol, rtol, 10^7, QuadGK.norm, nothing, nothing)
 end
 
 #= SidisData ======================================================================================#
@@ -286,14 +287,10 @@ end
 
 #= QED-radiation corrected cross-sections =========================================================#
 
-function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmx = (1-y)/(1-x*y)
-    ζmz = (1-y)/(1-z*y)
-    ζmx = 1-y+x*y
-    ξmz = 1-y+z*y
-    ξmxz = max(ξmx, ξmz)
-    ζmxz = max(ζmx, ζmz)
-    jac_x̂sec′(ξ̃m, ζ̃m) = let
+RCext(m, x) = x*(2-x) + m*(1-x)^2
+RCext_jac(m, x) = 2*(1-x)*(1-m)
+function RCbulk(fl, Dl, Ĥ, ξmx, ξmxz, ζmz, ζmxz)::Function
+    (X, Z) -> let ξ̃m = RCext(ξmxz, X), ζ̃m = RCext(ζmxz, Z)
         A = (ξ̃m-ζmz)/(1-ζmz)
         B = (ζ̃m-ξmx)/(1-ξmx)
         C = (1-ξ̃m)/(1-ζmz)*ζmz
@@ -304,32 +301,37 @@ function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
         E = (ξ-ξmx)/(1-ξmx)
         F = (ζ-ζmz)/(1-ζmz)
         jac = ξ*ζ*E*F/(ξ^2*ζ^2-C*D)
-        return jac * fl(ξ) * Dl(ζ) * ( x̂sec(ξ,ζ) - x̂sec(ξ,1.) - x̂sec(1.,ζ) + x̂sec(1.,1.) )
+        return jac * fl(ξ) * Dl(ζ) * ( Ĥ(ξ,ζ) - Ĥ(ξ,1.) - Ĥ(1.,ζ) + Ĥ(1.,1.) ) *
+            RCext_jac(ξmxz, X) * RCext_jac(ζmxz, Z)
     end
-    return (
-        + hcubature(X -> jac_x̂sec′(X[1],X[2]), (ξmxz,ζmxz),(1.,1.), rtol=rtol)[1]
-        + quadgk(ξ -> fl(ξ) * ( x̂sec(ξ,1.) - x̂sec(1.,1.) ), ξmxz,1., rtol=rtol)[1] * IDl(ζmxz)
-        + quadgk(ζ -> Dl(ζ) * ( x̂sec(1.,ζ) - x̂sec(1.,1.) ), ζmxz,1., rtol=rtol)[1] * Ifl(ξmxz)
-        + Ifl(ξmxz) * IDl(ζmxz) * x̂sec(1.,1.)
-    )
 end
-#= function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmin(ζ) = get_ξmin(x, y, z, ζ)
-    ζmin    = get_ζmin(x, y, z   )
-    return qed_conv(fl, Ifl, Dl, IDl, x̂sec,
-        (ξ,ζ) -> ζ > ζmin && ξ > ξmin(ζ), ξmin(1), ζmin, rtol=rtol)
-end =#
-#= function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmin(ζ) = get_ξmin(x, y, z, ζ)
-    ζmin    = get_ζmin(x, y, z   )
-    fl_x̂sec(ζ) =
-        quadgk(ξ -> fl(ξ) * ( x̂sec(ξ, ζ) - x̂sec(1, ζ) ), ξmin(ζ), 1, rtol=rtol)[1] +
-        Ifl(ξmin(ζ)) * x̂sec(1, ζ)
-    Dl_fl_x̂sec =
-        quadgk(ζ -> Dl(ζ) * ( fl_x̂sec(ζ) - fl_x̂sec(1) ), ζmin, 1, rtol=rtol)[1] +
-        IDl(ζmin) * fl_x̂sec(1)
-    return Dl_fl_x̂sec
-end =#
+function RCξedge(fl, Ĥ, ξmxz)::Function
+    X -> let ξ = RCext(ξmxz, X)
+        return fl(ξ) * ( Ĥ(ξ,1.) - Ĥ(1.,1.) ) *
+            RCext_jac(ξmxz, X)
+    end
+end
+function RCζedge(Dl, Ĥ, ζmxz)::Function
+    Z -> let ζ = RCext(ζmxz, Z)
+        return Dl(ζ) * ( Ĥ(1.,ζ) - Ĥ(1.,1.) ) *
+            RCext_jac(ζmxz, Z)
+    end
+end
+
+function RC_conv_xsec(fl, Ifl, Dl, IDl, Ĥ, y, x, z, rtol)
+    ξmx, ξmz = get_ξmins(y, x, z); ξmxz = max(ξmx,ξmz)
+    ζmx, ζmz = get_ζmins(y, x, z); ζmxz = max(ζmx,ζmz)
+    Iflξmxz, IDlζmxz = Ifl(ξmxz), IDl(ζmxz)
+    Hcorner = Iflξmxz * IDlζmxz * Ĥ(1.,1.)
+    H = Hcorner
+    Hξedge = quadgk(X -> IDlζmxz * RCξedge(fl, Ĥ, ξmxz)(X), 0,1, rtol=rtol, atol=rtol*abs(H))[1]
+    Hζedge = quadgk(Z -> Iflξmxz * RCζedge(Dl, Ĥ, ζmxz)(Z), 0,1, rtol=rtol, atol=rtol*abs(H))[1]
+    H += Hξedge + Hζedge
+    Hbulk = hcubature(X -> RCbulk(fl, Dl, Ĥ, ξmx, ξmxz, ζmz, ζmxz)(X[1],X[2]),
+            (0,0),(1,1), rtol=rtol, atol=rtol*abs(H))[1]
+    H += Hbulk
+    return H
+end
 
 """
     DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
@@ -350,12 +352,23 @@ function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
     _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
     return (
-        + qed_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+        + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Σx̂sec, y, xB, 0., opt.rtol)
         + ( iszero(λ) ? 0 : λ*
-          qed_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+          RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Δx̂sec, y, xB, 0., opt.rtol) )
     )
+end
+
+function _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
+        opt::Options=_opt, lepspin_mode::Int=0)::Function
+    xB, y, Q², λ, zh = let v=var; v.xB, v.y, v.Q², v.λ, v.zh end
+    return (ξ, ζ) -> let
+        v̂ar = get_sidis_hat_var(var, ξ, ζ)
+        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
+        return (y / Q²)/(ŷ / Q̂²) * ( y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
+            _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
+    end
 end
 
 """
@@ -366,21 +379,16 @@ SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with radiative correction
 """
 function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    xB, y, Q², λ, zh = let v=var; v.xB, v.y, v.Q², v.λ, v.zh end
-    x̂sec(ξ,ζ, lepspin_mode) = let
-        v̂ar = get_sidis_hat_var(var, ξ, ζ)
-        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
-        return (y / Q²)/(ŷ / Q̂²) * ( y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
-            _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
-    end
+    x̂sec(ξ,ζ, lepspin_mode) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt, lepspin_mode)(ξ,ζ)
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
+    xB, y, λ, zh = let v=var; v.xB, v.y, v.λ, v.zh end
     _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
     return (
-        + qed_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+        + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Σx̂sec, y, xB, zh, opt.rtol)
         + ( iszero(λ) ? 0 : λ*
-          qed_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+          RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Δx̂sec, y, xB, zh, opt.rtol) )
     )
 end
