@@ -1,7 +1,7 @@
 module SIDISXSec
 
 import QuadGK
-using HCubature: hcubature
+import HCubature
 using Statistics
 using QEDFactorization
 include("Constants.jl"); using .Constants
@@ -15,11 +15,12 @@ export get_toy_data, get_sidis_data, get_polsidis_data
 export RCData
 export get_e⁻_data, get_μ⁻_data
 
-export get_s_from_Ebeam, get_s, get_xB, get_y, get_Q², get_γ², get_ε, get_W²
+export get_s_from_Ebeam, get_s_from_Ebeams, get_s
+export get_xB, get_y, get_Q², get_W²
 export get_qT², get_PhT², get_qT²oQ²max
 export get_ϕ
-export get_ξmin, get_ζmin
 export above_dis_threshold, above_sidis_threshold
+export get_ξζmin
 
 export SidisVar, DisVar
 export get_sidis_hat_var
@@ -42,10 +43,21 @@ const _order = 7
     return Expr(:tuple, [:(S.$field) for field ∈ fields]...)
 end
 
-function quadgk(f, a, b; rtol=_rtol)::Tuple{Float64,Float64}
+function quadgk(f, a, b; rtol=_rtol, atol=nothing)::Tuple{Float64,Float64}
     # `quadgk` also calls `handle_infinities` !!!
     QuadGK.do_quadgk(f, (Float64(a),Float64(b)),
-        7, nothing, rtol, 10^7, QuadGK.norm, nothing, nothing)
+        7, atol, rtol, 10^7, QuadGK.norm, nothing, nothing)
+end
+function hcubature(f, a, b; rtol=_rtol, atol=0)::Tuple{Float64,Float64}
+    HCubature.hcubature_(
+        X -> let
+            val = f(X)
+            if isnan(val)
+                throw(DomainError(X, "hcubature integrand produced NaN"))
+            else return val
+            end
+        end,
+        a, b, HCubature.norm, rtol, atol, typemax(Int), 1, nothing)
 end
 
 #= SidisData ======================================================================================#
@@ -85,7 +97,7 @@ function get_sidis_data(M, fname::String, Mh, Dname::String;
     fdata = get_qcd_data(fname)
     Ddata = get_qcd_data(Dname)
     return SidisData(
-        Float64(M/A), Float64(Mh),
+        Float64(M/A), max(Mπ, Float64(Mh)),
         μ² -> get_αs(fdata, μ²),
         (id, x, μ²) -> get_qcd_density(fdata, id, μ², conjN, A, Z)(x),
         (id, z, μ²) -> get_qcd_density(Ddata, id, μ², conjh)(z),
@@ -97,7 +109,7 @@ function get_polsidis_data(M, fname::String, gname::String, Mh, Dname::String;
     gdata = get_qcd_data(gname)
     Ddata = get_qcd_data(Dname)
     return SidisData(
-        Float64(M/A), Float64(Mh),
+        Float64(M/A), max(Mπ, Float64(Mh)),
         μ² -> get_αs(fdata, μ²),
         (id, x, μ²) -> get_qcd_density(fdata, id, μ², conjN, A, Z)(x),
         (id, x, μ²) -> get_qcd_density(gdata, id, μ², conjN, A, Z)(x),
@@ -170,31 +182,28 @@ include("SIDISVar.jl")
 
 include("SIDISStructFunc.jl")
 
-#= Cross-sections =================================================================================#
+#= Cross sections =================================================================================#
 
 "Options for evaluating SIDIS xsec"
 struct Options
     rtol  :: Float64
     Q_cut :: Float64
-    W_cut :: Float64
+    Mth   :: Float64
 end
 Options(;
     rtol  = _rtol,
     Q_cut = 0.0,
-    W_cut = 0.0
-) = Options(rtol, Q_cut, W_cut)
+    Mth   = Mp + Mπ
+) = Options(rtol, Q_cut, Mth)
 const _opt = Options()
+Options(rtol, opt::Options) = Options(rtol, exposestruct(opt)[2:end]...)
 
 const ΣLEPSPIN = 1
 const ΔLEPSPIN = 2
 
 function _DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options=_opt,
         lepspin_mode::Int=0)::Float64
-    M, xB, y, Q², λ, SL = let v=var; v.M, v.xB, v.y, v.Q², v.λ, v.SL end
-    if !above_dis_threshold(var) return 0 end
-    if opt.Q_cut^2 > Q²                return 0 end
-    if opt.W_cut^2 > get_W²(xB, Q², M) return 0 end
-    ε = get_ε(xB, y, Q², M)
+    xB, y, Q², λ, SL, ε = let v=var; v.xB, v.y, v.Q², v.λ, v.SL, v.ε end
     return (y / Q²) *
         2/( y * Q² ) * y^2/2(1-ε) *
         sum(i -> quark_charge[i]^2 * (
@@ -213,20 +222,17 @@ end
 DIS `dσ /( dxB dQ² dϕS )/ αEM²` at LO. (`ϕS`-independent at leading twist)
 """
 function DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options=_opt)::Float64
+    @check_dis_threshold(var, opt.Mth)
+    if var.Q² < opt.Q_cut^2 return 0.0 end
     return _DIS_xsec_xB_Q²_ϕS(data, var, μ², opt)
 end
 
 function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Float64
-    M, _, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT² = exposestruct(var)
-    if !above_sidis_threshold(var) return 0 end
-    if opt.Q_cut^2 > Q²                return 0 end
-    if opt.W_cut^2 > get_W²(xB, Q², M) return 0 end
-    qT² = get_qT²(zh, PhT²)
+    ( _, _, xB, y, Q², λ, _, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, _,
+        γ², ε, _, ST², qT², _, _, _, _, _, _
+    ) = exposestruct(var)
     Fargs = (xB, Q², zh, qT², μ², opt.rtol)
-    ε = get_ε(xB, y, Q², M)
-    γ² = get_γ²(xB, Q², M)
-    ST = √get_ST²(d, SL)
     return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) * (
         + ( lepspin_mode == ΔLEPSPIN ? 0 :
         + (
@@ -241,7 +247,7 @@ function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar,
         #     + ε           * get_sin2ϕ(cosϕh,sinϕh) * sf.FULsin2ϕh(Fargs...)
         #     + √(2ε*(1+ε)) * sinϕh                  * sf.FULsinϕh( Fargs...)
         # ))
-        + ( iszero(ST) || isnan(cosϕS) || isnan(sinϕS) ? 0 : ST * (
+        + ( iszero(ST²) || isnan(cosϕS) || isnan(sinϕS) ? 0 : √ST² * (
             # + √(2ε*(1+ε)) * sinϕS * sf.FUTsinϕS(Fargs...)
         + ( isnan(cosϕh) || isnan(sinϕh) ? 0 :
             # + ε           * get_sinϕ₁₋ϕ₂(cosϕh,sinϕh,cosϕS,sinϕS)                * sf.FUTLsinϕh₋ϕS(Fargs...)
@@ -262,7 +268,7 @@ function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar,
         #     + √(2ε*(1-ε)) * cosϕh * FLLcosϕh(Fargs...)
         # )
         ))
-        # + ( iszero(ST) || isnan(cosϕS) || isnan(sinϕS) ? 0 :
+        # + ( iszero(ST²) || isnan(cosϕS) || isnan(sinϕS) ? 0 :
         #     + √(2ε*(1-ε)) * cosϕS * FLTcosϕS(Fargs...)
         # + ( isnan(cosϕh) || isnan(sinϕh) ? 0 :
         #     + √(1-ε^2)    * get_cosϕ₁₋ϕ₂(cosϕh,sinϕh,cosϕS,sinϕS)                * FLTcosϕh₋ϕS( Fargs...)
@@ -281,55 +287,56 @@ SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²`.
 """
 function SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt)::Float64
+    @check_sidis_threshold(var, opt.Mth)
+    if var.Q² < opt.Q_cut^2 return 0.0 end
     return _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt)
 end
 
 #= QED-radiation corrected cross-sections =========================================================#
 
-function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmx = (1-y)/(1-x*y)
-    ζmz = (1-y)/(1-z*y)
-    ζmx = 1-y+x*y
-    ξmz = 1-y+z*y
-    ξmxz = max(ξmx, ξmz)
-    ζmxz = max(ζmx, ζmz)
-    jac_x̂sec′(ξ̃m, ζ̃m) = let
-        A = (ξ̃m-ζmz)/(1-ζmz)
-        B = (ζ̃m-ξmx)/(1-ξmx)
-        C = (1-ξ̃m)/(1-ζmz)*ζmz
-        D = (1-ζ̃m)/(1-ξmx)*ξmx
-        Δ = √(A^2*B^2+(C-D)^2+2A*B*(C+D))
-        ξ = (A*B+C-D+Δ)/2B |> bound1
-        ζ = (A*B-C+D+Δ)/2A |> bound1
-        E = (ξ-ξmx)/(1-ξmx)
-        F = (ζ-ζmz)/(1-ζmz)
-        jac = ξ*ζ*E*F/(ξ^2*ζ^2-C*D)
-        return jac * fl(ξ) * Dl(ζ) * ( x̂sec(ξ,ζ) - x̂sec(ξ,1.) - x̂sec(1.,ζ) + x̂sec(1.,1.) )
-    end
-    return (
-        + hcubature(X -> jac_x̂sec′(X[1],X[2]), (ξmxz,ζmxz),(1.,1.), rtol=rtol)[1]
-        + quadgk(ξ -> fl(ξ) * ( x̂sec(ξ,1.) - x̂sec(1.,1.) ), ξmxz,1., rtol=rtol)[1] * IDl(ζmxz)
-        + quadgk(ζ -> Dl(ζ) * ( x̂sec(1.,ζ) - x̂sec(1.,1.) ), ζmxz,1., rtol=rtol)[1] * Ifl(ξmxz)
-        + Ifl(ξmxz) * IDl(ζmxz) * x̂sec(1.,1.)
-    )
+RCext(m, x) = x*(2-x) + m*(1-x)^2
+RCext_jac(m, x) = 2*(1-x)*(1-m)
+function RCcorner(Ifl, IDl, Ĥ, var, Mth)
+    ξm, ζm = get_ξζmin(var, Mth)
+    return Ifl(ξm) * IDl(ζm) * Ĥ(1.,1.)
 end
-#= function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmin(ζ) = get_ξmin(x, y, z, ζ)
-    ζmin    = get_ζmin(x, y, z   )
-    return qed_conv(fl, Ifl, Dl, IDl, x̂sec,
-        (ξ,ζ) -> ζ > ζmin && ξ > ξmin(ζ), ξmin(1), ζmin, rtol=rtol)
-end =#
-#= function qed_conv_xsec(fl, Ifl, Dl, IDl, x̂sec, y, x, z, rtol)
-    ξmin(ζ) = get_ξmin(x, y, z, ζ)
-    ζmin    = get_ζmin(x, y, z   )
-    fl_x̂sec(ζ) =
-        quadgk(ξ -> fl(ξ) * ( x̂sec(ξ, ζ) - x̂sec(1, ζ) ), ξmin(ζ), 1, rtol=rtol)[1] +
-        Ifl(ξmin(ζ)) * x̂sec(1, ζ)
-    Dl_fl_x̂sec =
-        quadgk(ζ -> Dl(ζ) * ( fl_x̂sec(ζ) - fl_x̂sec(1) ), ζmin, 1, rtol=rtol)[1] +
-        IDl(ζmin) * fl_x̂sec(1)
-    return Dl_fl_x̂sec
-end =#
+function RCξedge(fl, IDl, Ĥ, var, Mth)
+    X -> let
+        ξm, ζm = get_ξζmin(var, Mth)
+        ξ = RCext(ξm, X)
+        return fl(ξ) * IDl(ζm) * ( Ĥ(ξ,1.) - Ĥ(1.,1.) ) *
+            RCext_jac(ξm, X)
+    end
+end
+function RCζedge(Ifl, Dl, Ĥ, var, Mth)
+    Z -> let
+        ξm, ζm = get_ξζmin(var, Mth)
+        ζ = RCext(ζm, Z)
+        return Ifl(ξm) * Dl(ζ) * ( Ĥ(1.,ζ) - Ĥ(1.,1.) ) *
+            RCext_jac(ζm, Z)
+    end
+end
+function RCbulk(fl, Dl, Ĥ, var, Mth)
+    (X, Z) -> let
+        R, A, B, ξm, ζm = get_RABξζmin(var, Mth)
+        ξ̃ = RCext(ξm, X)
+        ζ = RCext(ζm, Z)
+        ξm_ζ = (B+R*ζ)/(A*ζ-1)
+        ξ = ( ξ̃ - ξm + ξm_ζ *( 1 - ξ̃ ) )/( 1 - ξm )
+        jac = ( 1 - ξm_ζ )/( 1 - ξm )
+        return jac * fl(ξ) * Dl(ζ) * ( Ĥ(ξ,ζ) - Ĥ(ξ,1.) - Ĥ(1.,ζ) + Ĥ(1.,1.) ) *
+            RCext_jac(ξm, X) * RCext_jac(ζm, Z)
+    end
+end
+function RC_conv_xsec(fl, Ifl, Dl, IDl, Ĥ, var, Mth, rtol)
+    H = 0.0
+    H += RCcorner(Ifl, IDl, Ĥ, var, Mth)
+    H += quadgk(RCξedge(fl,  IDl, Ĥ, var, Mth), 0,1, rtol=rtol, atol=rtol*abs(H))[1] +
+         quadgk(RCζedge(Ifl, Dl,  Ĥ, var, Mth), 0,1, rtol=rtol, atol=rtol*abs(H))[1]
+    H += hcubature(X -> RCbulk(fl, Dl, Ĥ, var, Mth)(X[1],X[2]),
+            (0,0),(1,1), rtol=rtol, atol=rtol*abs(H))[1]
+    return H
+end
 
 """
     DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
@@ -339,10 +346,12 @@ DIS `dσ /( dxB dQ² dϕS )/ αEM²` at LO with radiative corrections.
 """
 function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    xB, y, Q², λ = let v=var; v.xB, v.y, v.Q², v.λ end
+    @check_dis_threshold(var, opt.Mth)
+    y, Q², λ = let v=var; v.y, v.Q², v.λ end
     x̂sec(ξ,ζ, lepspin_mode) = let
         v̂ar = get_sidis_hat_var(DisVar(var), ξ, ζ)
         ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
+        if Q̂² < opt.Q_cut^2 return 0.0 end
         return (y / Q²)/(ŷ / Q̂²) * 1/ζ * y /( ξ * ζ - (1 - y) ) * # Jacobian
             _DIS_xsec_xB_Q²_ϕS(data, v̂ar, μ², opt, lepspin_mode)
     end
@@ -350,14 +359,25 @@ function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
     _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
     return (
-        + qed_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Σx̂sec, y, xB, 0., opt.rtol)
+        + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+            Σx̂sec, var, opt.Mth, opt.rtol)
         + ( iszero(λ) ? 0 : λ*
-          qed_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Δx̂sec, y, xB, 0., opt.rtol) )
+          RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+            Δx̂sec, var, opt.Mth, opt.rtol) )
     )
 end
 
+function _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
+        opt::Options=_opt, lepspin_mode::Int=0)::Function
+    y, Q² = let v=var; v.y, v.Q² end
+    return (ξ, ζ) -> let
+        v̂ar = get_sidis_hat_var(var, ξ, ζ)
+        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
+        if Q̂² < opt.Q_cut^2 return 0.0 end
+        return (y / Q²)/(ŷ / Q̂²) * ( y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
+            _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
+    end
+end
 """
     SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
@@ -366,23 +386,20 @@ SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with radiative correction
 """
 function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    xB, y, Q², λ, zh = let v=var; v.xB, v.y, v.Q², v.λ, v.zh end
-    x̂sec(ξ,ζ, lepspin_mode) = let
-        v̂ar = get_sidis_hat_var(var, ξ, ζ)
-        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
-        return (y / Q²)/(ŷ / Q̂²) * ( y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
-            _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
-    end
+    @check_sidis_threshold(var, opt.Mth)
+    x̂sec(ξ,ζ, lepspin_mode) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt, lepspin_mode)(ξ,ζ)
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
     _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
+    λ = var.λ
     return (
-        + qed_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Σx̂sec, y, xB, zh, opt.rtol)
-        + ( iszero(λ) ? 0 : λ*
-          qed_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Δx̂sec, y, xB, zh, opt.rtol) )
+        + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+            Σx̂sec, var, opt.Mth, opt.rtol)
+        + ( iszero(λ) ? 0 : λ *
+          RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
+            Δx̂sec, var, opt.Mth, opt.rtol) )
     )
+    # return RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), Σx̂sec, var, opt.Mth)
 end
 
 #= Observables ====================================================================================#
