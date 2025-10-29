@@ -92,7 +92,7 @@ function FUUT(f, D, xB, zh, qT², μ²)::Float64
         * f(quark_code[i], xB, μ²)
         * D(quark_code[i], zh, μ²)
         * Gauss(PhT²,PhT²avg),
-    1:num_quark)
+    1:6)
 end
 
 function FUUcosϕh(f, D, xB, Q², zh, qT², μ²)::Float64
@@ -103,7 +103,7 @@ function FUUcosϕh(f, D, xB, Q², zh, qT², μ²)::Float64
         * -xB*_fperp1(xB) * f(quark_code[i], xB, μ²)
         * D(quark_code[i], zh, μ²)
         * 2MN * (zh*√PhT²/PhT²avg) * Gauss(PhT²,PhT²avg),
-    1:num_quark)
+    1:6)
     return cahn
 end
 

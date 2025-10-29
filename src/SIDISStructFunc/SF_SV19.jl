@@ -9,7 +9,7 @@ using SpecialFunctions: besselj
 using QuadGK
 using ..SIDISXSec
 using ..SIDISXSec.QCDData
-using TMDTools.SV19, TMDTools.ZetaEvolve
+using TMDTools.ZetaEvolve, TMDTools.SV19
 using ..SIDISXSec.TMD: HUUT
 
 export get_sf_sv19
@@ -27,13 +27,15 @@ function FUUT(f̃::Function, D̃::Function, xB, Q², zh, qT², μ², rtol=_rtol)
 end
 
 """
-    get_sf_sv19(data::SidisData; order=2, inclH=false)::SidisStructFunc
+    get_sf_sv19(data::SidisData; param::SV19Param=SV19.paramfit, order=2,
+        inclH=false)::SidisStructFunc
 
 - `data` should be the `LHASplitExtend` version.
 - set `inclH=true` to include hard parts.
 """
-function get_sf_sv19(data::SidisData; order=2, inclH=false)::SidisStructFunc
-    sv19data = SV19.setdata(data.f, data.D, data.αs)
+function get_sf_sv19(data::SidisData; param::SV19Param=SV19.paramfit, order=2,
+        inclH=false)::SidisStructFunc
+    sv19data = SV19.setdata(data.f, data.D, data.αs, param=param)
     f̃(q, x, bT², μ², ζ, rtol) = SV19.get_tmdpdf(sv19data, q, μ², ζ, order=order)(x, bT²)
     D̃(q, z, bT², μ², ζ, rtol) = SV19.get_tmdff( sv19data, q, μ², ζ, order=order)(z, bT²)
     _HUUT(Q², μ²) = inclH ? HUUT(data.αs, Q², μ²) : 1.
