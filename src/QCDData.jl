@@ -92,7 +92,7 @@ end
 
 #= TMDGrid ========================================================================================#
 
-const TMDGRID_PATH = split(ENV["TMDGRID_PATH"], ":")[1]
+const TMDGRID_PATHS = split(ENV["TMDGRID_PATH"], ":")
 const VarGrid = @NamedTuple{name::String, type::String, start::Float64, stop::Float64, length::Int}
 const TMDGridFloat = Float32
 
@@ -128,8 +128,10 @@ Base.show(io::IO, tmdgrid::TMDGrid) = print(io,
 const _sigdigits = 8
 round2str(x) = Printf.format(Printf.Format("%$(_sigdigits+8).$(_sigdigits-1)E"), x)
 
-function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.")
-    open(joinpath(TMDGRID_PATH, name*".tmdgrid"), "w") do io
+function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.",
+        path=nothing)
+    if isnothing(path) path = TMDGRID_PATHS[1] end
+    open(joinpath(path, name*".tmdgrid"), "w") do io
         # write description
         write(io, desc*"\n")
         # write vars
@@ -150,8 +152,15 @@ function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.")
 end
 
 function read_tmdgrid(name::String)::Union{TMDGrid,Nothing}
-    filename = joinpath(TMDGRID_PATH, name*".tmdgrid")
-    if !isfile(filename)
+    filename = ""
+    for path ∈ TMDGRID_PATHS
+        _filename = joinpath(path, name*".tmdgrid")
+        if isfile(_filename)
+            filename = _filename
+            break
+        end
+    end
+    if filename == ""
         @warn "TMDGrid \"$name\" not found, will be 0."
         return nothing
     end

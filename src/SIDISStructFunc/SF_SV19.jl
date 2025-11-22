@@ -30,11 +30,12 @@ end
     get_sf_sv19(data::SidisData; param::SV19Param=SV19.paramfit, order=2,
         inclH=false)::SidisStructFunc
 
-- `data` should be the `LHASplitExtend` version.
+- `data` should be the `ZetaSplitExtend` version.
 - set `inclH=true` to include hard parts.
 """
 function get_sf_sv19(data::SidisData; param::SV19Param=SV19.paramfit, order=2,
         inclH=false)::SidisStructFunc
+    @info "get_sf_sv19: please ensure `data` is the `ZetaSplitExtend` version"
     sv19data = SV19.setdata(data.f, data.D, data.αs, param=param)
     f̃(q, x, bT², μ², ζ, rtol) = SV19.get_tmdpdf(sv19data, q, μ², ζ, order=order)(x, bT²)
     D̃(q, z, bT², μ², ζ, rtol) = SV19.get_tmdff( sv19data, q, μ², ζ, order=order)(z, bT²)
