@@ -1,8 +1,7 @@
 .vscode
 Manifest.toml
 
-src/SIDISStructFunc/N*
-src/TMDGrid
+src/SIDISStructFunc/NLOColl
 test
 _*
 

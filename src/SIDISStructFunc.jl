@@ -52,6 +52,9 @@ using .SF_SV19
 include("SIDISStructFunc/Coll.jl")
 using .Coll
 
+include("SIDISStructFunc/NLPColl/NLPColl.jl")
+using .NLPColl
+
 #= Matching prescription ==========================================================================#
 
 include("SIDISStructFunc/WY.jl")
