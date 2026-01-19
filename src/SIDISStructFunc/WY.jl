@@ -59,36 +59,39 @@ end
 
 #= W+Y construction ===============================================================================#
 
-Ξ(qT_Q) = let η = 0.34, aΞ = 8
-    exp(-(qT_Q/η)^aΞ)
-end
-X(qT) = let λ = 2/3, aX = 4
-    1 - exp(-(qT/λ)^aX)
-end
+const _η = 0.34
+const _λ = 2/3
+
+Ξ(qT, Q, η=_η, aΞ=8) = exp( - ( qT / ( η*Q ) )^aΞ )
+X(qT, λ=_λ, aX=4) = 1 - exp( - ( qT / λ )^aX )
 
 "W+Y construction. `FUUT_tmd` and `FUUT_coll` should follow the interface in `SidisStructFunc`."
 function FUUT_WY(FUUT_tmd::Function, FUUT_coll::Function,
         αs::Function, extf::Function, extD::Function,
-        xB, Q², zh, qT², μ², rtol=_rtol)::Float64
+        xB, Q², zh, qT², μ²,
+        η=_η, λ=_λ, rtol=_rtol)::Float64
     qT, Q = √qT², √Q²
     tmd()  = FUUT_tmd(                 xB, Q², zh, qT², μ², rtol)
     coll() = FUUT_coll(                xB, Q², zh, qT², μ², rtol)
     asym() = FUUT_asym(αs, extf, extD, xB, Q², zh, qT², μ²)
     return (
-        qT/Q < 1 ? Ξ(qT/Q) * tmd() : 0
+        qT < Q ? Ξ(qT, Q, η) * tmd() : 0
     ) + (
-        qT/Q > 0.01 ? X(qT) *( coll() - Ξ(qT/Q) * asym() ) : 0
+        (qT/Q)^2 > SIDISXSec.Coll.qT²oQ²_low ? X(qT, λ) *( coll() - Ξ(qT, Q, η) * asym() ) : 0
     )
 end
 
 """
-    get_sf_WY(data::SidisData, sf_tmd::SidisStructFunc, sf_coll::SidisStructFunc)::SidisStructFunc
+    get_sf_WY(data::SidisData, sf_tmd::SidisStructFunc, sf_coll::SidisStructFunc;
+        η=_η, λ=_λ)::SidisStructFunc
 """
-function get_sf_WY(data::SidisData, sf_tmd::SidisStructFunc, sf_coll::SidisStructFunc)::SidisStructFunc
+function get_sf_WY(data::SidisData, sf_tmd::SidisStructFunc, sf_coll::SidisStructFunc;
+        η=_η, λ=_λ)::SidisStructFunc
+    @info "get_sf_WY: please ensure `data` is the `ZetaSplitExtend` version"
     αs, f, D = data.αs, data.f, data.D
     return SidisStructFunc(
         SIDISXSec.zerosf,
-        (xB, Q², zh, qT², μ², rtol=_rtol) -> FUUT_WY(sf_tmd.FUUT, sf_coll.FUUT, αs, f, D, xB, Q², zh, qT², μ², rtol),
+        (xB, Q², zh, qT², μ², rtol=_rtol) -> FUUT_WY(sf_tmd.FUUT, sf_coll.FUUT, αs, f, D, xB, Q², zh, qT², μ², η, λ, rtol),
         SIDISXSec.zerosf,
         SIDISXSec.zerosf,
     )
