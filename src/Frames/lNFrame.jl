@@ -5,7 +5,7 @@ using ..SIDISXSec
 # functions are not exported
 
 function get_l′T²(var::SidisVar)
-    y, Q², γ² = let v=var; v.y, v.Q², v,γ² end
+    y, Q², γ² = let v=var; v.y, v.Q², v.γ² end
     return ( 1 - y - y^2 * γ² /4 ) * Q²
 end
 

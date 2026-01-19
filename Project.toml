@@ -1,7 +1,7 @@
 name = "SIDISXSec"
 uuid = "db2f9484-0a0b-410d-b12d-1b6aa968f6b6"
-authors = ["Youjack <iamjasonlin@163.com>"]
 version = "0.1.0"
+authors = ["Youjack <iamjasonlin@163.com>"]
 
 [deps]
 HCubature = "19dc6840-f33b-545b-b366-655c7e3ffd49"

@@ -20,7 +20,7 @@ export get_xB, get_y, get_Q², get_W²
 export get_qT², get_PhT², get_qT²oQ²max
 export get_ϕ
 export above_dis_threshold, above_sidis_threshold
-export get_ξζmin
+export get_ξζmin, get_ξmin, get_ζmin
 
 export SidisVar, DisVar
 export get_sidis_hat_var
@@ -148,7 +148,7 @@ const zerorc = RCData(
 function get_e⁻_data()::RCData
     fdata = get_qed_data("QED_electron_DF_nlo")
     gdata = get_qed_data("QED_electron_helicityDF_nlo")
-    Ddata = fdata
+    Ddata = get_qed_data("QED_electron_FF_nlo")
     return RCData(
         μ² -> get_αEM(fdata, μ²),
         (ξ, μ²) -> get_qed_density(         fdata, 11, μ²)(ξ),
@@ -162,7 +162,7 @@ end
 function get_μ⁻_data()::RCData
     fdata = get_qed_data("QED_muon_DF_nlo")
     gdata = get_qed_data("QED_muon_helicityDF_nlo")
-    Ddata = fdata
+    Ddata = get_qed_data("QED_muon_FF_nlo")
     return RCData(
         μ² -> get_αEM(fdata, μ²),
         (ξ, μ²) -> get_qed_density(         fdata, 13, μ²)(ξ),
