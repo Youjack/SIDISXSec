@@ -189,12 +189,14 @@ struct Options
     rtol  :: Float64
     Q_cut :: Float64
     Mth   :: Float64
+    incl_rcbulk :: Bool
 end
 Options(;
     rtol  = _rtol,
     Q_cut = 0.0,
-    Mth   = Mp + Mπ
-) = Options(rtol, Q_cut, Mth)
+    Mth   = Mp + Mπ,
+    incl_rcbulk = true,
+) = Options(rtol, Q_cut, Mth, incl_rcbulk)
 const _opt = Options()
 Options(rtol, opt::Options) = Options(rtol, exposestruct(opt)[2:end]...)
 
@@ -328,13 +330,15 @@ function RCbulk(fl, Dl, Ĥ, var, Mth)
             RCext_jac(ξm, X) * RCext_jac(ζm, Z)
     end
 end
-function RC_conv_xsec(fl, Ifl, Dl, IDl, Ĥ, var, Mth, rtol)
+function RC_conv_xsec(fl, Ifl, Dl, IDl, Ĥ, var, Mth, rtol, incl_rcbulk)
     H = 0.0
     H += RCcorner(Ifl, IDl, Ĥ, var, Mth)
     H += quadgk(RCξedge(fl,  IDl, Ĥ, var, Mth), 0,1, rtol=rtol, atol=rtol*abs(H))[1] +
          quadgk(RCζedge(Ifl, Dl,  Ĥ, var, Mth), 0,1, rtol=rtol, atol=rtol*abs(H))[1]
+    if incl_rcbulk
     H += hcubature(X -> RCbulk(fl, Dl, Ĥ, var, Mth)(X[1],X[2]),
             (0,0),(1,1), rtol=rtol, atol=rtol*abs(H))[1]
+    end
     return H
 end
 
@@ -360,10 +364,10 @@ function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
     _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
     return (
         + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Σx̂sec, var, opt.Mth, opt.rtol)
+            Σx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk)
         + ( iszero(λ) ? 0 : λ*
           RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Δx̂sec, var, opt.Mth, opt.rtol) )
+            Δx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk) )
     )
 end
 
@@ -394,12 +398,11 @@ function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar
     λ = var.λ
     return (
         + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Σx̂sec, var, opt.Mth, opt.rtol)
+            Σx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk)
         + ( iszero(λ) ? 0 : λ *
           RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
-            Δx̂sec, var, opt.Mth, opt.rtol) )
+            Δx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk) )
     )
-    # return RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), Σx̂sec, var, opt.Mth)
 end
 
 #= Observables ====================================================================================#
