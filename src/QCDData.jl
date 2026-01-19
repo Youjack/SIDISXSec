@@ -98,13 +98,15 @@ const TMDGridFloat = Float32
 
 """
 Grid to store TMD data.
+- `desc` is a description string.
 - `vars = [(name::String, type::String, start::Float64, stop::Float64, length::Int), ...]`
 - `values` is a multi-dimensional array. It mimics the function `values(var1, var2, ...)::TMDGridFloat`.
 """
 struct TMDGrid
+    desc :: String
     vars :: Vector{VarGrid}
     values
-    function TMDGrid(vars, values::AbstractArray)
+    function TMDGrid(vars, values::AbstractArray, desc::String="No description.")
         size_values = size(values)
         if length(vars) ≠ length(size_values)
             throw(ErrorException("length(vars) ≠ length(size(values))"))
@@ -115,9 +117,9 @@ struct TMDGrid
             end
         end
         if eltype(values) ≡ TMDGridFloat
-            new(vars, values)
+            new(desc, vars, values)
         else
-            new(vars, TMDGridFloat.(values))
+            new(desc, vars, TMDGridFloat.(values))
         end
     end
 end
@@ -128,12 +130,11 @@ Base.show(io::IO, tmdgrid::TMDGrid) = print(io,
 const _sigdigits = 8
 round2str(x) = Printf.format(Printf.Format("%$(_sigdigits+8).$(_sigdigits-1)E"), x)
 
-function write_tmdgrid(name::String, tmdgrid::TMDGrid; desc="No description.",
-        path=nothing)
+function write_tmdgrid(name::String, tmdgrid::TMDGrid; path=nothing)
     if isnothing(path) path = TMDGRID_PATHS[1] end
     open(joinpath(path, name*".tmdgrid"), "w") do io
         # write description
-        write(io, desc*"\n")
+        write(io, tmdgrid.desc*"\n")
         # write vars
         for var_grid ∈ tmdgrid.vars
             write(io, rpad(var_grid.name, 10))
@@ -165,7 +166,7 @@ function read_tmdgrid(name::String)::Union{TMDGrid,Nothing}
         return nothing
     end
     open(filename, "r") do io
-        readline(io) # skip description
+        desc = readline(io)
         split_line::Vector{SubString{String}} = Vector{SubString{String}}(undef, 0)
         # read vars
         vars = Vector{VarGrid}(undef, 0)
@@ -187,7 +188,7 @@ function read_tmdgrid(name::String)::Union{TMDGrid,Nothing}
         values_ndims = length(values_size)
         values = Array{TMDGridFloat,values_ndims}(undef, values_size)
         read!(io, values)
-        return TMDGrid(vars, values)
+        return TMDGrid(vars, values, desc)
     end
 end
 

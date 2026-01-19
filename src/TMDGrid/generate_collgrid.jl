@@ -90,8 +90,7 @@ function generate_coll(sf::Function, sfname::String, Nname::String, hname::Strin
             (name="R",      type="lin", start=0.0,        stop=1.0,        length=length(R_grid)     ),
             (name="A",      type="lin", start=0.0,        stop=1.0,        length=length(A_grid)     ),
             (name="μ²",     type="log", start=μ²_low,     stop=μ²_up,      length=length(μ²_grid)    ),
-            ], values),
-        desc=desc
+            ], values, desc)
     )
 end
 function generate_coll(no::Int, fname::String, Nname::String, Dname::String, hname::String)

@@ -71,8 +71,7 @@ function generate_tmd(sf::Function, sfname::String, Nname::String, hname::String
             (name="xB", type="log", start=xB_low, stop=1.0,   length=length(xB_grid)),
             (name="zh", type="log", start=zh_low, stop=1.0,   length=length(zh_grid)),
             (name="Q²", type="log", start=Q²_low, stop=Q²_up, length=length(Q²_grid)),
-            ], values),
-        desc=desc,
+            ], values, desc),
         path=path
     )
 end
