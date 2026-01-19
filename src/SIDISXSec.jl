@@ -231,11 +231,12 @@ end
 
 function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Float64
-    ( _, _, xB, y, Q², λ, _, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, _,
+    ( _, Mh, xB, y, Q², λ, _, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
         γ², ε, _, ST², qT², _, _, _, _, _, _
     ) = exposestruct(var)
     Fargs = (xB, Q², zh, qT², μ², opt.rtol)
-    return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) * (
+    return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) /
+            √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * (
         + ( lepspin_mode == ΔLEPSPIN ? 0 :
         + (
             + ε * sf.FUUL(Fargs...)
@@ -354,9 +355,8 @@ function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
     y, Q², λ = let v=var; v.y, v.Q², v.λ end
     x̂sec(ξ,ζ, lepspin_mode) = let
         v̂ar = get_sidis_hat_var(DisVar(var), ξ, ζ)
-        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
-        if Q̂² < opt.Q_cut^2 return 0.0 end
-        return (y / Q²)/(ŷ / Q̂²) * 1/ζ * y /( ξ * ζ - (1 - y) ) * # Jacobian
+        if v̂ar.Q² < opt.Q_cut^2 return 0.0 end
+        return 1/ζ * ( ξ * y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
             _DIS_xsec_xB_Q²_ϕS(data, v̂ar, μ², opt, lepspin_mode)
     end
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
@@ -373,12 +373,14 @@ end
 
 function _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Function
-    y, Q² = let v=var; v.y, v.Q² end
+    y, Q², γ², Mh, zh, PhT² = let v=var; v.y, v.Q², v.γ², v.Mh, v.zh, v.PhT² end
     return (ξ, ζ) -> let
         v̂ar = get_sidis_hat_var(var, ξ, ζ)
-        ŷ, Q̂² = let v=v̂ar; v.y, v.Q² end
+        ŷ, Q̂², γ̂², ẑh, P̂hT² = let v=v̂ar; v.y, v.Q², v.γ², v.zh, v.PhT² end
         if Q̂² < opt.Q_cut^2 return 0.0 end
-        return (y / Q²)/(ŷ / Q̂²) * ( y /( ξ * ζ - (1 - y) ) )^2 * # Jacobian
+        return ξ^2 * ( y /( ξ * ζ - (1 - y) ) )^3 *
+                √( 1 - γ̂² *( Mh^2 + P̂hT² )/( ẑh^2 * Q̂² ) ) /
+                √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * # Jacobian
             _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
     end
 end
