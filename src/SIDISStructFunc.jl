@@ -62,3 +62,6 @@ using .WY
 
 include("SIDISStructFunc/InEW.jl")
 using .InEW
+
+include("SIDISStructFunc/AdHocMatch.jl")
+using .AdHocMatch
