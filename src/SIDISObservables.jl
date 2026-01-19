@@ -11,19 +11,19 @@ function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
 end
 
 const _trapzNstart = 2
-const _trapznmax = 5
-const _trapzϕ0 = tuple((
+const _trapznmax = 6
+const _trapzϕ0 = [
     i * 2π/_trapzNstart
     for i ∈ 0:_trapzNstart-1
-)...)
-const _trapzϕ = tuple((
+]
+const _trapzϕ = [
     let N = _trapzNstart * 2^n
-        tuple((
+        [
             i * 2π/N
             for i ∈ 1:2:N
-        )...)
+        ]
     end for n ∈ 1:_trapznmax
-)...)
+]
 "Calculate `∫(0,2π) f(ϕ) dϕ` using trapezoidal rule."
 function trapzϕ(f, rtol=_rtol)::Float64
     set_prev = mean(f(ϕ) for ϕ ∈ _trapzϕ0)
@@ -32,6 +32,10 @@ function trapzϕ(f, rtol=_rtol)::Float64
     for n ∈ 1:_trapznmax
         set_next = mean(f(ϕ) for ϕ ∈ _trapzϕ[n])
         set = ( set_prev + set_next )/2
+        if iszero(set)
+            @warn "trapzϕ: set = 0"
+            return 0.0
+        end
         rerr = abs((set - set_prev)/set)
         if rerr ≤ rtol
             return 2π * set
@@ -41,19 +45,19 @@ function trapzϕ(f, rtol=_rtol)::Float64
     @warn "trapzϕ: rerr = $rerr, sampled points: $(_trapzNstart^(_trapznmax+1))"
     return 2π * set
 end
-const _trapzϕϕ0 = tuple((
+const _trapzϕϕ0 = [
     tuple( i * 2π/_trapzNstart, j * 2π/_trapzNstart )
     for j ∈ 0:_trapzNstart-1, i ∈ 0:_trapzNstart-1
-)...)
-const _trapzϕϕ = tuple((
+]
+const _trapzϕϕ = [
     let N = _trapzNstart * 2^n
-        filter(!isnothing, tuple((
+        filter(!isnothing, [
             isodd(i) && isodd(j) ? nothing :
             tuple( i * 2π/N , j * 2π/N )
             for j ∈ 0:N-1, i ∈ 0:N-1
-        )...))
+        ])
     end for n ∈ 1:_trapznmax
-)...)
+]
 "Calculate `∬(0,2π)² f(ϕ₁,ϕ₂) dϕ₁dϕ₂` using trapezoidal rule."
 function trapzϕϕ(f, rtol=_rtol)::Float64
     # anisotropic refinement may be used [ChatGPT]
@@ -103,24 +107,27 @@ function SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::
     if iszero(DIS_xsec) return 0 end
     # SIDIS
     varϕ(ϕh) = change_sidis_var_ϕ(var, NaN, ϕh)
-    opt′ = Options(opt.rtol/10, opt)
-    SIDIS_xsec = trapzϕ(ϕh ->
-        SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), rc, μ², opt′),
-        opt.rtol)
-    #= _, fl, Ifl, _, _, Dl, IDl = exposestruct(rc)
-    x̂sec(ϕh) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), μ², opt, ΣLEPSPIN)
-    SIDIS_xsec = 0.0
-    SIDIS_xsec +=
-        quadgk(ϕh -> 2RCcorner(ξ->Ifl(ξ,μ²), ζ->IDl(ζ,μ²), x̂sec(ϕh), var(ϕh), opt.Mth),
-            0,π, rtol=opt.rtol)[1]
-    SIDIS_xsec +=
-        hcubature(X -> 2RCξedge(ξ->fl(ξ,μ²), ζ->IDl(ζ,μ²), x̂sec(X[1]), var(X[1]), opt.Mth)(X[2]),
-            (0,0),(π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1] +
-        hcubature(X -> 2RCζedge(ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), var(X[1]), opt.Mth)(X[2]),
-            (0,0),(π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1]
-    SIDIS_xsec +=
-        hcubature(X -> 2RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), var(X[1]), opt.Mth)(X[2],X[3]),
-            (0,0,0),(π,1,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1] =#
+    if opt.ϕ_algo == ϕGAUSS
+        _, fl, Ifl, _, _, Dl, IDl = exposestruct(rc)
+        x̂sec(ϕh) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), μ², opt, ΣLEPSPIN)
+        SIDIS_xsec = 0.0
+        SIDIS_xsec +=
+            quadgk(ϕh -> 2RCcorner(ξ->Ifl(ξ,μ²), ζ->IDl(ζ,μ²), x̂sec(ϕh), varϕ(ϕh), opt.Mth),
+                0,π, rtol=opt.rtol)[1]
+        SIDIS_xsec +=
+            hcubature(X -> 2RCξedge(ξ->fl(ξ,μ²), ζ->IDl(ζ,μ²), x̂sec(X[1]), varϕ(X[1]), opt.Mth)(X[2]),
+                (0,0),(π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1] +
+            hcubature(X -> 2RCζedge(ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), varϕ(X[1]), opt.Mth)(X[2]),
+                (0,0),(π,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1]
+        SIDIS_xsec += opt.incl_rcbulk ?
+            hcubature(X -> 2RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), varϕ(X[1]), opt.Mth)(X[2],X[3]),
+                (0,0,0),(π,1,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1] : 0.0
+    else
+        opt′ = Options(opt.rtol/10, opt)
+        SIDIS_xsec = trapzϕ(ϕh ->
+            SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), rc, μ², opt′),
+            opt.rtol)
+    end    
     return SIDIS_xsec / DIS_xsec
 end
 

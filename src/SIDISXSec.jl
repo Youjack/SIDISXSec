@@ -184,19 +184,24 @@ include("SIDISStructFunc.jl")
 
 #= Cross sections =================================================================================#
 
+const ϕTRAPZ = 1
+const ϕGAUSS = 2
+
 "Options for evaluating SIDIS xsec"
 struct Options
     rtol  :: Float64
     Q_cut :: Float64
     Mth   :: Float64
     incl_rcbulk :: Bool
+    ϕ_algo :: Int
 end
 Options(;
     rtol  = _rtol,
     Q_cut = 0.0,
     Mth   = Mp + Mπ,
     incl_rcbulk = true,
-) = Options(rtol, Q_cut, Mth, incl_rcbulk)
+    ϕ_algo = ϕTRAPZ,
+) = Options(rtol, Q_cut, Mth, incl_rcbulk, ϕ_algo)
 const _opt = Options()
 Options(rtol, opt::Options) = Options(rtol, exposestruct(opt)[2:end]...)
 
