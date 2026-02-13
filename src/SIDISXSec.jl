@@ -246,8 +246,13 @@ function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar,
         γ², ε, _, ST², qT², _, _, _, _
     ) = exposestruct(var)
     Fargs = (xB, Q², zh, qT², μ², opt.rtol)
-    return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) /
-            √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * (
+    # Guard against negative sqrt argument
+    sqrt_arg = 1 - γ² * (Mh^2 + PhT²) / (zh^2 * Q²)
+    if sqrt_arg < 0
+        throw(DomainError(sqrt_arg, "Negative argument in sqrt for SIDIS cross-section calculation"))
+    end
+    return (y / Q²) * 1/( xB * y * Q² ) * y^2/(2*(1-ε)) * (1+γ²/(2*xB)) /
+            √(sqrt_arg) * (
         + ( lepspin_mode == ΔLEPSPIN ? 0 :
         + (
             + ε * sf.FUUL(Fargs...)
@@ -398,9 +403,18 @@ function _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVa
         v̂ar = get_sidis_hat_var(var, ξ, ζ)
         ŷ, Q̂², γ̂², ẑh, P̂hT² = let v=v̂ar; v.y, v.Q², v.γ², v.zh, v.PhT² end
         if Q̂² < opt.Q_cut^2 return 0.0 end
+        # Guard against negative sqrt arguments in Jacobian
+        sqrt_arg1 = 1 - γ̂² * (Mh^2 + P̂hT²) / (ẑh^2 * Q̂²)
+        sqrt_arg2 = 1 - γ² * (Mh^2 + PhT²) / (zh^2 * Q²)
+        if sqrt_arg1 < 0
+            throw(DomainError(sqrt_arg1, "Negative argument in sqrt (numerator) for Jacobian calculation"))
+        end
+        if sqrt_arg2 < 0
+            throw(DomainError(sqrt_arg2, "Negative argument in sqrt (denominator) for Jacobian calculation"))
+        end
         return ξ^2 * ( y /( ξ * ζ - (1 - y) ) )^3 *
                 √( 1 - γ̂² *( Mh^2 + P̂hT² )/( ẑh^2 * Q̂² ) ) /
-                √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * # Jacobian
+                √(sqrt_arg2) * # Jacobian
             _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, v̂ar, μ², opt, lepspin_mode)
     end
 end
