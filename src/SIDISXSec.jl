@@ -212,7 +212,7 @@ function _DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options
         lepspin_mode::Int=0)::Float64
     xB, y, Q², λ, SL, ε = let v=var; v.xB, v.y, v.Q², v.λ, v.SL, v.ε end
     return (y / Q²) *
-        2/( y * Q² ) * y^2/2(1-ε) *
+        2/( y * Q² ) * y^2/(2*(1-ε)) *
         sum(i -> quark_charge[i]^2 * (
             + ( lepspin_mode == ΔLEPSPIN ? 0 :
                 data.f(quark_code[i], xB, μ²)
@@ -329,6 +329,13 @@ function RCbulk(fl, Dl, Ĥ, var, Mth)
         R, A, B, ξm, ζm = get_RABξζmin(var, Mth)
         ξ̃ = RCext(ξm, X)
         ζ = RCext(ζm, Z)
+        # Guard against division by zero
+        if abs(A*ζ - 1) < eps(Float64)
+            throw(DomainError(A*ζ, "A*ζ is too close to 1, causing division by zero in ξm_ζ calculation"))
+        end
+        if abs(1 - ξm) < eps(Float64)
+            throw(DomainError(ξm, "ξm is too close to 1, causing division by zero in ξ and jac calculations"))
+        end
         ξm_ζ = (B+R*ζ)/(A*ζ-1)
         ξ = ( ξ̃ - ξm + ξm_ζ *( 1 - ξ̃ ) )/( 1 - ξm )
         jac = ( 1 - ξm_ζ )/( 1 - ξm )

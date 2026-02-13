@@ -108,7 +108,12 @@ SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²
         qT² = get_qT²(zh, PhT², Q², γ², Mh)
     end
     q_dot_γS = SL * √( (1 + γ²) * Q² )
-    q_dot_Ph = zh * Q² * ( - 1 + (1 + γ²) * (Mh^2 + PhT²)/(zh^2 * Q²) )/( 1 + √( (1 + γ²) *( 1 - γ² * (Mh^2 + PhT²)/(zh^2 * Q²) ) ) )
+    # Calculate q_dot_Ph with guard against negative sqrt argument
+    sqrt_arg = (1 + γ²) * (1 - γ² * (Mh^2 + PhT²)/(zh^2 * Q²))
+    if sqrt_arg < 0
+        throw(DomainError(sqrt_arg, "Negative argument in sqrt for q_dot_Ph calculation"))
+    end
+    q_dot_Ph = zh * Q² * ( - 1 + (1 + γ²) * (Mh^2 + PhT²)/(zh^2 * Q²) )/( 1 + √(sqrt_arg) )
     return SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
         γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph)
 end
@@ -172,6 +177,13 @@ end
 
 function get_RABξζmin(var::SidisVar, Mth)
     R, A, B = _get_RAB(var, Mth)
+    # Guard against division by zero
+    if abs(A - 1) < eps(Float64)
+        throw(DomainError(A, "A is too close to 1, causing division by zero in ξm calculation"))
+    end
+    if abs(A - R) < eps(Float64)
+        throw(DomainError((A, R), "A is too close to R, causing division by zero in ζm calculation"))
+    end
     ξm = (B+R)/(A-1)
     ζm = (B+1)/(A-R)
     return R, A, B, ξm, ζm
@@ -182,10 +194,18 @@ function get_ξζmin(var::SidisVar, Mth)
 end
 function get_ξmin(var::SidisVar, ζ, Mth)
     R, A, B = _get_RAB(var, Mth)
+    # Guard against division by zero
+    if abs(A*ζ - 1) < eps(Float64)
+        throw(DomainError(A*ζ, "A*ζ is too close to 1, causing division by zero in ξmin calculation"))
+    end
     return (B+R*ζ)/(A*ζ-1)
 end
 function get_ζmin(var::SidisVar, ξ, Mth)
     R, A, B = _get_RAB(var, Mth)
+    # Guard against division by zero
+    if abs(A*ξ - R) < eps(Float64)
+        throw(DomainError((A*ξ, R), "A*ξ is too close to R, causing division by zero in ζmin calculation"))
+    end
     return (B+ξ)/(A*ξ-R)
 end
 
