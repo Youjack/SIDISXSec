@@ -4,7 +4,7 @@
 
 """
 SIDIS structure functions. \\
-Unneeded structure functions can be set to be `zeroSF`.
+Unneeded structure functions can be assigned `zerosf`.
 - `F(xB, Q², zh, qT², μ², rtol=_rtol)`
 """
 struct SidisStructFunc{F1,F2,F3,F4,F8,F10,F12,F14}

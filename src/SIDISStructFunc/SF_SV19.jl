@@ -31,7 +31,7 @@ end
         Horder=0)::SidisStructFunc
 
 - `data` should be the `ZetaSplitExtend` version.
-- `Horder` set the order of the hard factor.
+- `Horder` set the order of the hard factor: `αs^Horder`.
 """
 function get_sf_sv19(data::SidisData; param::SV19Param=SV19.paramfit, order=2,
         Horder=0)::SidisStructFunc
