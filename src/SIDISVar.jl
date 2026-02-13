@@ -39,7 +39,6 @@ get_sinϕ₁₋ϕ₂(cosϕ₁, sinϕ₁, cosϕ₂, sinϕ₂) = get_sinϕ₁₊ϕ
 
 """
 Variables that specify the kinematics of a SIDIS process (on a spin 1/2 target).
-- Target mass `M` should never be set to `0`, but `Mh` can be `0`.
 - Lepton helicity `λ` should be in `[-1,+1]`. 
 - Degree of polarization `d` of the target should be in `[0,1]`, and `SL` should be in `[-d,d]`. If
   `ST=0`, or equivalently `|SL|=d`, one can assign `cosϕS=sinϕS=NaN`. For unpolarized target, one
@@ -69,12 +68,10 @@ struct SidisVar
     lT² :: Float64
     ST² :: Float64
     qT² :: Float64
-    q_dot_S  :: Float64
+    q_dot_γS :: Float64
     q_dot_Ph :: Float64
-    l_dot_S  :: Float64
+    l_dot_γS :: Float64
     l_dot_Ph :: Float64
-    ϵ_l_S_P_q  :: Float64
-    ϵ_l_Ph_P_q :: Float64
 end
 Base.show(io::IO, v::SidisVar) = print(io,
     "M = $(v.M) GeV, Mh = $(v.Mh) GeV\n",
@@ -93,14 +90,11 @@ Base.show(io::IO, v::SidisVar) = print(io,
     "qT²  = ", v.qT²                          , " GeV²\n",
 )
 SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², ε, lT², ST², qT², q_dot_S, q_dot_Ph) = let
-    l_dot_S  = ( iszero(ST² ) ? 0. : - √(lT² * ST² ) * cosϕS ) + ( (1 + y * γ² /2) * q_dot_S                        )/( y * (1 + γ²) )
-    l_dot_Ph = ( iszero(PhT²) ? 0. : - √(lT² * PhT²) * cosϕh ) + ( (1 + y * γ² /2) * q_dot_Ph + (1 - y/2) * zh * Q² )/( y * (1 + γ²) )
-    ϵ_l_S_P_q  = iszero(ST² ) ? 0. : - √( (1 + 1/γ²) * lT² * ST²  * M^2 * Q² ) * sinϕS
-    ϵ_l_Ph_P_q = iszero(PhT²) ? 0. : - √( (1 + 1/γ²) * lT² * PhT² * M^2 * Q² ) * sinϕh
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph) = let
+    l_dot_γS = ( iszero(ST² ) ? 0. : - √(lT² * γ² * ST² ) * cosϕS ) + ( (1 + y * γ² /2) * q_dot_γS                       )/( y * (1 + γ²) )
+    l_dot_Ph = ( iszero(PhT²) ? 0. : - √(lT² *      PhT²) * cosϕh ) + ( (1 + y * γ² /2) * q_dot_Ph + (1 - y/2) * zh * Q² )/( y * (1 + γ²) )
     return SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², ε, lT², ST², qT², q_dot_S, q_dot_Ph,
-        l_dot_S, l_dot_Ph, ϵ_l_S_P_q, ϵ_l_Ph_P_q)
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph, l_dot_γS, l_dot_Ph)
 end
 SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT², use_qT²=false) = let
     γ²  = get_γ²(xB, Q², M)
@@ -113,10 +107,10 @@ SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²
     else
         qT² = get_qT²(zh, PhT², Q², γ², Mh)
     end
-    q_dot_S  = 1/γ² * (         + SL * √( (1 + γ²) * Q² * (             γ²                 ) ) )
-    q_dot_Ph = 1/γ² * ( zh * Q² -      √( (1 + γ²) * Q² * ( zh^2 * Q² - γ² * (Mh^2 + PhT²) ) ) )
+    q_dot_γS = SL * √( (1 + γ²) * Q² )
+    q_dot_Ph = zh * Q² * ( - 1 + (1 + γ²) * (Mh^2 + PhT²)/(zh^2 * Q²) )/( 1 + √( (1 + γ²) *( 1 - γ² * (Mh^2 + PhT²)/(zh^2 * Q²) ) ) )
     return SidisVar(M, Mh, xB, y, Q², λ, d, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², ε, lT², ST², qT², q_dot_S, q_dot_Ph)
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph)
 end
 SidisVar(M, Mh, xB, y, Q², zh, cosϕh, sinϕh, PhT², use_qT²=false) =
     SidisVar(M, Mh, xB, y, Q², 0, 0, 0, NaN, NaN, zh, cosϕh, sinϕh, PhT², use_qT²)
@@ -197,7 +191,12 @@ end
 
 bound0(val) = max(0, val)
 bound1(val) = min(val, 1)
-boundpm1(val) = clamp(val, -1, +1)
+boundpm(b::Float64) = val::Float64 -> let
+    if     val ≈ +b return +b
+    elseif val ≈ -b return -b
+    else return clamp(val, -b, +b)
+    end
+end
 
 """
     get_sidis_hat_var(var::SidisVar, ξ, ζ; rot=true)::SidisVar
@@ -206,9 +205,8 @@ Get `(ξ,ζ)`-dependent SIDIS variables. `ξ,ζ` are assumed to be in the allowe
 """
 function get_sidis_hat_var(var::SidisVar, ξ, ζ)::SidisVar
     ( M, Mh, xB, y, Q², λ, d, _, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        _, _, _, ST², _,
-        q_dot_S, q_dot_Ph, l_dot_S, l_dot_Ph,
-        ϵ_l_S_P_q, ϵ_l_Ph_P_q
+        γ², _, lT², ST², _,
+        q_dot_γS, q_dot_Ph, l_dot_γS, l_dot_Ph
     ) = exposestruct(var)
     if !iszero(ST²) && ( isnan(cosϕS) || isnan(sinϕS) )
         throw(ArgumentError("`ϕS=NaN` while `ST≠0` is not well defined."))
@@ -221,26 +219,27 @@ function get_sidis_hat_var(var::SidisVar, ξ, ζ)::SidisVar
     ẑh = ζ * zh * y /( ξ * ζ - (1 - y) ) |> bound1
     ŷ  = 1 - (1 - y)/(ξ * ζ)
     Q̂² = ξ/ζ * Q²
-    l̂_dot_S  = ξ * l_dot_S
-    l̂_dot_Ph = ξ * l_dot_Ph
-    q̂_dot_S  = (ξ - 1/ζ) * l_dot_S  + 1/ζ * q_dot_S
-    q̂_dot_Ph = (ξ - 1/ζ) * l_dot_Ph + 1/ζ * q_dot_Ph
-    ϵ_l̂_S_P_q̂  = ξ/ζ * ϵ_l_S_P_q
-    ϵ_l̂_Ph_P_q̂ = ξ/ζ * ϵ_l_Ph_P_q
-    # there should NOT be un-hat variable below !!!
-    γ̂²  = get_γ²(x̂B, Q̂², M)
+    γ̂oγ = √(ξ * ζ) * y /( ξ * ζ - (1 - y) ); γ̂² = γ̂oγ^2 * γ²
+    l̂_dot_γ̂S = γ̂oγ * ξ * l_dot_γS
+    l̂_dot_Ph =       ξ * l_dot_Ph
+    q̂_dot_γ̂S = γ̂oγ *( (ξ - 1/ζ) * l_dot_γS + 1/ζ * q_dot_γS )
+    q̂_dot_Ph =        (ξ - 1/ζ) * l_dot_Ph + 1/ζ * q_dot_Ph
+
     l̂T² = get_lT²(ŷ, Q̂², γ̂²)
-    ŜL  = - q̂_dot_S / √( (1 + 1/γ̂²) * Q̂² ) |> val->clamp(val,-d,d)
+    ŜL  = q̂_dot_γ̂S / √( (1 + γ̂²) * Q̂² ) |> boundpm(d)
     ŜT² = get_ST²(d, ŜL)
     P̂hT² = - Mh^2 + ( - γ̂² * q̂_dot_Ph^2 + 2 * q̂_dot_Ph * ẑh * Q̂² + ẑh^2 * Q̂²^2 )/( (1 + γ̂²) * Q̂² ) |> bound0
-    cosϕ̂S = iszero(ST² ) ? NaN : 1/√(l̂T² * ŜT² ) * ( - l̂_dot_S  + ( (1 + ŷ * γ̂² /2) * q̂_dot_S                        )/( ŷ * (1 + γ̂²) ) ) |> boundpm1
-    cosϕ̂h = iszero(PhT²) ? NaN : 1/√(l̂T² * P̂hT²) * ( - l̂_dot_Ph + ( (1 + ŷ * γ̂² /2) * q̂_dot_Ph + (1 - ŷ/2) * ẑh * Q̂² )/( ŷ * (1 + γ̂²) ) ) |> boundpm1
-    sinϕ̂S = iszero(ST² ) ? NaN : - ϵ_l̂_S_P_q̂  / √( (1 + 1/γ̂²) * l̂T² * ŜT²  * M^2 * Q̂² ) |> boundpm1
-    sinϕ̂h = iszero(PhT²) ? NaN : - ϵ_l̂_Ph_P_q̂ / √( (1 + 1/γ̂²) * l̂T² * P̂hT² * M^2 * Q̂² ) |> boundpm1
+    cosϕ̂S = iszero(ŜT² ) ? NaN : 1/√(l̂T² * ŜT² ) * (
+            + ( iszero(ST²) ? 0. : √(lT² * ST²) * cosϕS )*( ξ - ( 1 + ŷ * γ̂² /2 )/( ŷ * (1 + γ̂²) ) * (ξ - 1/ζ) )
+            - √γ² / ζ * ( 1 - y - y^2 * γ² /4 )/( 1 + γ² ) * ( y - ŷ )/( (1 - y) * ŷ^2 + (1 - ŷ) * y^2 * γ² ) * q_dot_γS
+        ) |> boundpm(1.)
+    cosϕ̂h = iszero(P̂hT²) ? NaN : 1/√(l̂T² * P̂hT²) * ( - l̂_dot_Ph + ( (1 + ŷ * γ̂² /2) * q̂_dot_Ph + (1 - ŷ/2) * ẑh * Q̂² )/( ŷ * (1 + γ̂²) ) ) |> boundpm(1.)
+    sinϕ̂S = iszero(ŜT² ) ? NaN : iszero(ST² ) ? 0. : √(ST²  / ŜT² ) * sinϕS |> boundpm(1.)
+    sinϕ̂h = iszero(P̂hT²) ? NaN : iszero(PhT²) ? 0. : √(PhT² / P̂hT²) * sinϕh |> boundpm(1.)
 
     return SidisVar(M, Mh, x̂B, ŷ, Q̂², λ, d, ŜL, cosϕ̂S, sinϕ̂S, ẑh, cosϕ̂h, sinϕ̂h, P̂hT²,
-        γ̂², get_ε(ŷ, γ̂²), l̂T², ŜT², get_qT²(ẑh, P̂hT², Q̂², γ̂², Mh), q̂_dot_S, q̂_dot_Ph,
-        l̂_dot_S, l̂_dot_Ph, ϵ_l̂_S_P_q̂, ϵ_l̂_Ph_P_q̂)
+        γ̂², get_ε(ŷ, γ̂²), l̂T², ŜT², get_qT²(ẑh, P̂hT², Q̂², γ̂², Mh),
+        q̂_dot_γ̂S, q̂_dot_Ph, l̂_dot_γ̂S, l̂_dot_Ph)
 end
 
 "The angle from `q` to `q̂`, in degree."

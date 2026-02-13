@@ -3,11 +3,10 @@
 
 function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
     ( M, Mh, xB, y, Q², λ, d, SL, _, _, zh, _, _, PhT²,
-        γ², ε, lT², ST², qT², q_dot_S, q_dot_Ph,
-        _, _, _, _
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph, _, _
     ) = exposestruct(var)
     return SidisVar(M, Mh, xB, y, Q², λ, d, SL, cos(ϕS), sin(ϕS), zh, cos(ϕh), sin(ϕh), PhT²,
-        γ², ε, lT², ST², qT², q_dot_S, q_dot_Ph)
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph)
 end
 
 const _trapzNstart = 2

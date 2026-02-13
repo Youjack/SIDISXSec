@@ -237,7 +237,7 @@ end
 function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Float64
     ( _, Mh, xB, y, Q², λ, _, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², ε, _, ST², qT², _, _, _, _, _, _
+        γ², ε, _, ST², qT², _, _, _, _
     ) = exposestruct(var)
     Fargs = (xB, Q², zh, qT², μ², opt.rtol)
     return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) /
