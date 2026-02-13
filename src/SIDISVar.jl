@@ -219,6 +219,19 @@ boundpm(b::Float64) = val::Float64 -> let
 end
 
 """
+    safe_sqrt(x, context="")
+
+Safely compute sqrt(x), throwing DomainError if x < 0.
+"""
+function safe_sqrt(x::Float64, context::String="")::Float64
+    if x < 0
+        msg = isempty(context) ? "Negative sqrt argument: $x" : "$context: Negative sqrt argument: $x"
+        throw(DomainError(x, msg))
+    end
+    return √x
+end
+
+"""
     get_sidis_hat_var(var::SidisVar, ξ, ζ; rot=true)::SidisVar
 
 Get `(ξ,ζ)`-dependent SIDIS variables. `ξ,ζ` are assumed to be in the allowed range.
@@ -246,16 +259,16 @@ function get_sidis_hat_var(var::SidisVar, ξ, ζ)::SidisVar
     q̂_dot_Ph =        (ξ - 1/ζ) * l_dot_Ph + 1/ζ * q_dot_Ph
 
     l̂T² = get_lT²(ŷ, Q̂², γ̂²)
-    ŜL  = q̂_dot_γ̂S / √( (1 + γ̂²) * Q̂² ) |> boundpm(d)
+    ŜL  = q̂_dot_γ̂S / safe_sqrt((1 + γ̂²) * Q̂², "ŜL calculation") |> boundpm(d)
     ŜT² = get_ST²(d, ŜL)
     P̂hT² = - Mh^2 + ( - γ̂² * q̂_dot_Ph^2 + 2 * q̂_dot_Ph * ẑh * Q̂² + ẑh^2 * Q̂²^2 )/( (1 + γ̂²) * Q̂² ) |> bound0
-    cosϕ̂S = iszero(ŜT² ) ? NaN : 1/√(l̂T² * ŜT² ) * (
-            + ( iszero(ST²) ? 0. : √(lT² * ST²) * cosϕS )*( ξ - ( 1 + ŷ * γ̂² /2 )/( ŷ * (1 + γ̂²) ) * (ξ - 1/ζ) )
+    cosϕ̂S = iszero(ŜT² ) ? NaN : 1/safe_sqrt(l̂T² * ŜT², "cosϕ̂S calculation") * (
+            + ( iszero(ST²) ? 0. : safe_sqrt(lT² * ST², "cosϕ̂S inner calculation") * cosϕS )*( ξ - ( 1 + ŷ * γ̂² /2 )/( ŷ * (1 + γ̂²) ) * (ξ - 1/ζ) )
             - √γ² / ζ * ( 1 - y - y^2 * γ² /4 )/( 1 + γ² ) * ( y - ŷ )/( (1 - y) * ŷ^2 + (1 - ŷ) * y^2 * γ² ) * q_dot_γS
         ) |> boundpm(1.)
-    cosϕ̂h = iszero(P̂hT²) ? NaN : 1/√(l̂T² * P̂hT²) * ( - l̂_dot_Ph + ( (1 + ŷ * γ̂² /2) * q̂_dot_Ph + (1 - ŷ/2) * ẑh * Q̂² )/( ŷ * (1 + γ̂²) ) ) |> boundpm(1.)
-    sinϕ̂S = iszero(ŜT² ) ? NaN : iszero(ST² ) ? 0. : √(ST²  / ŜT² ) * sinϕS |> boundpm(1.)
-    sinϕ̂h = iszero(P̂hT²) ? NaN : iszero(PhT²) ? 0. : √(PhT² / P̂hT²) * sinϕh |> boundpm(1.)
+    cosϕ̂h = iszero(P̂hT²) ? NaN : 1/safe_sqrt(l̂T² * P̂hT², "cosϕ̂h calculation") * ( - l̂_dot_Ph + ( (1 + ŷ * γ̂² /2) * q̂_dot_Ph + (1 - ŷ/2) * ẑh * Q̂² )/( ŷ * (1 + γ̂²) ) ) |> boundpm(1.)
+    sinϕ̂S = iszero(ŜT² ) ? NaN : iszero(ST² ) ? 0. : safe_sqrt(ST²  / ŜT², "sinϕ̂S calculation") * sinϕS |> boundpm(1.)
+    sinϕ̂h = iszero(P̂hT²) ? NaN : iszero(PhT²) ? 0. : safe_sqrt(PhT² / P̂hT², "sinϕ̂h calculation") * sinϕh |> boundpm(1.)
 
     return SidisVar(M, Mh, x̂B, ŷ, Q̂², λ, d, ŜL, cosϕ̂S, sinϕ̂S, ẑh, cosϕ̂h, sinϕ̂h, P̂hT²,
         γ̂², get_ε(ŷ, γ̂²), l̂T², ŜT², get_qT²(ẑh, P̂hT², Q̂², γ̂², Mh),

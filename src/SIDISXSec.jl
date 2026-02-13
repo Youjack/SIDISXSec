@@ -218,8 +218,14 @@ function _DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options
                 data.f(quark_code[i], xB, μ²)
             )
             + ( lepspin_mode == ΣLEPSPIN || iszero(λ) || iszero(SL) ? 0 :
-                (lepspin_mode == ΔLEPSPIN ? 1 : λ) *
-                SL * √(1-ε^2) * data.g(quark_code[i], xB, μ²)
+                (lepspin_mode == ΔLEPSPIN ? 1 : λ) * let
+                    # Guard against sqrt of negative value
+                    sqrt_arg = 1 - ε^2
+                    if sqrt_arg < 0
+                        throw(DomainError(ε, "ε value leads to negative sqrt argument: 1 - ε^2 = $(sqrt_arg)"))
+                    end
+                    SL * √(sqrt_arg) * data.g(quark_code[i], xB, μ²)
+                end
             )
         ), 1:num_quark)
 end
@@ -270,12 +276,14 @@ function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar,
         # + ( isnan(cosϕh) || isnan(sinϕh) ? 0 :
         #     + √(2ε*(1-ε)) * sinϕh * FLUsinϕh(Fargs...)
         # )
-        + ( iszero(SL) ? 0 : SL * (
-            + √(1-ε^2) * sf.FLL(Fargs...)
-        # + ( isnan(cosϕh) || isnan(sinϕh) ? 0 :
-        #     + √(2ε*(1-ε)) * cosϕh * FLLcosϕh(Fargs...)
-        # )
-        ))
+        + ( iszero(SL) ? 0 : SL * let
+            # Guard against sqrt of negative value
+            sqrt_arg = 1 - ε^2
+            if sqrt_arg < 0
+                throw(DomainError(ε, "ε value leads to negative sqrt argument: 1 - ε^2 = $(sqrt_arg)"))
+            end
+            √(sqrt_arg) * sf.FLL(Fargs...)
+        end)
         # + ( iszero(ST²) || isnan(cosϕS) || isnan(sinϕS) ? 0 :
         #     + √(2ε*(1-ε)) * cosϕS * FLTcosϕS(Fargs...)
         # + ( isnan(cosϕh) || isnan(sinϕh) ? 0 :
