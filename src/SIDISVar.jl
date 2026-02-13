@@ -179,10 +179,10 @@ function get_RABξζmin(var::SidisVar, Mth)
     R, A, B = _get_RAB(var, Mth)
     # Guard against division by zero
     if abs(A - 1) < eps(Float64)
-        throw(DomainError(A, "A is too close to 1, causing division by zero in ξm calculation"))
+        throw(DomainError(A, "A is too close to 1, causing division by zero in xi_m calculation"))
     end
     if abs(A - R) < eps(Float64)
-        throw(DomainError((A, R), "A is too close to R, causing division by zero in ζm calculation"))
+        throw(DomainError((A, R), "A is too close to R, causing division by zero in zeta_m calculation"))
     end
     ξm = (B+R)/(A-1)
     ζm = (B+1)/(A-R)
@@ -196,7 +196,7 @@ function get_ξmin(var::SidisVar, ζ, Mth)
     R, A, B = _get_RAB(var, Mth)
     # Guard against division by zero
     if abs(A*ζ - 1) < eps(Float64)
-        throw(DomainError(A*ζ, "A*ζ is too close to 1, causing division by zero in ξmin calculation"))
+        throw(DomainError(A*ζ, "A*zeta is too close to 1, causing division by zero in xi_min calculation"))
     end
     return (B+R*ζ)/(A*ζ-1)
 end
@@ -204,7 +204,7 @@ function get_ζmin(var::SidisVar, ξ, Mth)
     R, A, B = _get_RAB(var, Mth)
     # Guard against division by zero
     if abs(A*ξ - R) < eps(Float64)
-        throw(DomainError((A*ξ, R), "A*ξ is too close to R, causing division by zero in ζmin calculation"))
+        throw(DomainError((A*ξ, R), "A*xi is too close to R, causing division by zero in zeta_min calculation"))
     end
     return (B+ξ)/(A*ξ-R)
 end

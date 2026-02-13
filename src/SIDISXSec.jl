@@ -344,10 +344,10 @@ function RCbulk(fl, Dl, Ĥ, var, Mth)
         ζ = RCext(ζm, Z)
         # Guard against division by zero
         if abs(A*ζ - 1) < eps(Float64)
-            throw(DomainError(A*ζ, "A*ζ is too close to 1, causing division by zero in ξm_ζ calculation"))
+            throw(DomainError(A*ζ, "A*zeta is too close to 1, causing division by zero in xi_m_zeta calculation"))
         end
         if abs(1 - ξm) < eps(Float64)
-            throw(DomainError(ξm, "ξm is too close to 1, causing division by zero in ξ and jac calculations"))
+            throw(DomainError(ξm, "xi_m is too close to 1, causing division by zero (both xi and jac depend on 1-xi_m)"))
         end
         ξm_ζ = (B+R*ζ)/(A*ζ-1)
         ξ = ( ξ̃ - ξm + ξm_ζ *( 1 - ξ̃ ) )/( 1 - ξm )
