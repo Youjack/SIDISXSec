@@ -222,7 +222,7 @@ function _DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options
                     # Guard against sqrt of negative value
                     sqrt_arg = 1 - ε^2
                     if sqrt_arg < 0
-                        throw(DomainError(ε, "ε value leads to negative sqrt argument: 1 - ε^2 = $(sqrt_arg)"))
+                        throw(DomainError(ε, "epsilon value leads to negative sqrt argument: 1 - epsilon^2 = $(sqrt_arg)"))
                     end
                     SL * √(sqrt_arg) * data.g(quark_code[i], xB, μ²)
                 end
@@ -285,7 +285,7 @@ function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar,
             # Guard against sqrt of negative value
             sqrt_arg = 1 - ε^2
             if sqrt_arg < 0
-                throw(DomainError(ε, "ε value leads to negative sqrt argument: 1 - ε^2 = $(sqrt_arg)"))
+                throw(DomainError(ε, "epsilon value leads to negative sqrt argument: 1 - epsilon^2 = $(sqrt_arg)"))
             end
             √(sqrt_arg) * sf.FLL(Fargs...)
         end)
