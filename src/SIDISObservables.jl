@@ -2,9 +2,8 @@
 #= Utilities for calculating SIDIS observables                                                    =#
 
 function change_sidis_var_ϕ(var::SidisVar, ϕS, ϕh)
-    ( M, Mh, xB, y, Q², λ, d, SL, _, _, zh, _, _, PhT²,
-        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph, _, _
-    ) = exposestruct(var)
+    @unpack(var, M, Mh, xB, y, Q², λ, d, SL, zh, PhT²,
+        γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph)
     return SidisVar(M, Mh, xB, y, Q², λ, d, SL, cos(ϕS), sin(ϕS), zh, cos(ϕh), sin(ϕh), PhT²,
         γ², ε, lT², ST², qT², q_dot_γS, q_dot_Ph)
 end
@@ -107,7 +106,7 @@ function SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::
     # SIDIS
     varϕ(ϕh) = change_sidis_var_ϕ(var, NaN, ϕh)
     if opt.ϕ_algo == ϕGAUSS
-        _, fl, Ifl, _, _, Dl, IDl = exposestruct(rc)
+        @unpack rc fl Ifl Dl IDl
         x̂sec(ϕh) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), μ², opt, ΣLEPSPIN)
         SIDIS_xsec = 0.0
         SIDIS_xsec +=
@@ -122,11 +121,11 @@ function SIDISRC_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc, var::
             hcubature(X -> 2RCbulk(ξ->fl(ξ,μ²), ζ->Dl(ζ,μ²), x̂sec(X[1]), varϕ(X[1]), opt.Mth)(X[2],X[3]),
                 (0,0,0),(π,1,1), rtol=opt.rtol, atol=opt.rtol*abs(SIDIS_xsec))[1] : 0.0
     else
-        opt′ = Options(opt.rtol/10, opt)
+        opt′ = @pack opt::Options rtol=>opt.rtol/10
         SIDIS_xsec = trapzϕ(ϕh ->
             SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), rc, μ², opt′),
             opt.rtol)
-    end    
+    end
     return SIDIS_xsec / DIS_xsec
 end
 
@@ -142,7 +141,7 @@ function SIDISRC_Aϕh_xB_Q²_zh_PhT²(trig::Function,
         sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt; normalize=true)::Float64
     varϕ(ϕh) = change_sidis_var_ϕ(var, NaN, ϕh)
-    opt′ = Options(opt.rtol/10, opt)
+    opt′ = @pack opt::Options rtol=>opt.rtol/10
     numr = trapzϕ(ϕh ->
         trig(ϕh) * SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕh), rc, μ², opt′),
         opt.rtol)
@@ -162,7 +161,7 @@ function SIDISRC_AϕSϕh_xB_Q²_zh_PhT²(trig::Function,
         sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt; normalize=true)::Float64
     varϕ(ϕS,ϕh) = change_sidis_var_ϕ(var, ϕS, ϕh)
-    opt′ = Options(opt.rtol/10, opt)
+    opt′ = @pack opt::Options rtol=>opt.rtol/10
     numr = trapzϕ(ϕS -> trapzϕ(ϕh ->
         trig(ϕS,ϕh) * SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕS,ϕh), rc, μ², opt′),
         opt.rtol), opt.rtol)

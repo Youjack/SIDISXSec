@@ -127,7 +127,7 @@ DisVar(v::SidisVar) =
 Determine whether `(q+P)² > Mth²`.
 """
 function above_dis_threshold(var::SidisVar, Mth)::Bool
-    M, xB, Q² = let v=var; v.M, v.xB, v.Q² end
+    @unpack var M xB Q²
     return get_W²(xB, Q², M) > Mth^2
 end
 """
@@ -136,7 +136,7 @@ end
 Determine whether `(q+P-Ph)² > Mth²`.
 """
 function above_sidis_threshold(var::SidisVar, Mth)::Bool
-    M, Mh, xB, Q², zh = let v=var; v.M, v.Mh, v.xB, v.Q², v.zh end
+    @unpack var M Mh xB Q² zh
     return get_W²(xB, Q², M) > Mth^2 - Mh^2 + 2( var.q_dot_Ph + zh/xB * Q²/2 )
 end
 
@@ -158,8 +158,7 @@ include("Frames/lNFrame.jl")
 #= QED distortion =================================================================================#
 
 function _get_RAB(var::SidisVar, Mth)
-    M, Mh, xB, y, Q², zh = let v=var; v.M, v.Mh, v.xB, v.y, v.Q², v.zh end
-    l_dot_Ph, q_dot_Ph = let v=var; v.l_dot_Ph, v.q_dot_Ph end
+    @unpack var M Mh xB y Q² zh l_dot_Ph q_dot_Ph
     Mh = isnan(Mh) ? 0. : Mh
     zh = isnan(zh) ? 0. : zh
     l_dot_Ph = isnan(l_dot_Ph) ? 0. : l_dot_Ph
@@ -204,10 +203,8 @@ end
 Get `(ξ,ζ)`-dependent SIDIS variables. `ξ,ζ` are assumed to be in the allowed range.
 """
 function get_sidis_hat_var(var::SidisVar, ξ, ζ)::SidisVar
-    ( M, Mh, xB, y, Q², λ, d, _, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², _, lT², ST², _,
-        q_dot_γS, q_dot_Ph, l_dot_γS, l_dot_Ph
-    ) = exposestruct(var)
+    @unpack(var, M, Mh, xB, y, Q², λ, d, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
+        γ², lT², ST², q_dot_γS, q_dot_Ph, l_dot_γS, l_dot_Ph)
     if !iszero(ST²) && ( isnan(cosϕS) || isnan(sinϕS) )
         throw(ArgumentError("`ϕS=NaN` while `ST≠0` is not well defined."))
     end
@@ -244,7 +241,7 @@ end
 
 "The angle from `q` to `q̂`, in degree."
 function get_distort_angle(var::SidisVar, ξ, ζ)::Float64
-    M, xB, y, Q² = let v=var; v.M, v.xB, v.y, v.Q² end
+    @unpack var M xB y Q²
     
     E  = Q² /( 2 * xB * y * M )
     E′ = (1-y) * E

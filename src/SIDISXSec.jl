@@ -7,7 +7,7 @@ using QEDFactorization
 include("Constants.jl"); using .Constants
 include("QCDData.jl"); using .QCDData
 
-export exposestruct
+export @unpack, @pack
 
 export SidisData
 export get_toy_data, get_sidis_data, get_polsidis_data
@@ -38,9 +38,48 @@ export SIDISRC_Aϕh_xB_Q²_zh_PhT², SIDISRC_AϕSϕh_xB_Q²_zh_PhT²
 const _rtol = 5e-3
 const _order = 7
 
-@generated function exposestruct(S)
-    fields = fieldnames(S)
-    return Expr(:tuple, [:(S.$field) for field ∈ fields]...)
+macro unpack(obj, args...)
+    # inspired by [https://github.com/mauro3/UnPack.jl]
+    assignments = map(args) do arg
+        if isa(arg, Expr) && arg.head == :call && arg.args[1] == :(=>)
+            # field => newname syntax
+            field = arg.args[2]
+            newname = arg.args[3]
+            :($(esc(newname)) = getproperty($(esc(obj)), $(QuoteNode(field))))
+        else
+            # just field
+            field = arg
+            :($(esc(field)) = getproperty($(esc(obj)), $(QuoteNode(field))))
+        end
+    end
+    return Expr(:block, assignments...)
+end
+macro pack(obj_T, args...)
+    if !isa(obj_T, Expr) || obj_T.head != :(::)
+        error("@pack expects syntax: @pack obj::Type field => value, ...")
+    else
+        obj = obj_T.args[1]
+        T = obj_T.args[2]
+    end
+    updates = Dict{Symbol, Any}()
+    for arg ∈ args
+        if isa(arg, Expr) && arg.head == :call && arg.args[1] == :(=>)
+            field = arg.args[2]
+            value = arg.args[3]
+            updates[field] = value
+        else
+            error("@pack expects field => value pairs")
+        end
+    end
+    fields = fieldnames(Core.eval(__module__, T))
+    args_exprs = map(fields) do field
+        if haskey(updates, field)
+            esc(updates[field])
+        else
+            :(getfield($(esc(obj)), $(QuoteNode(field))))
+        end
+    end
+    return Expr(:call, esc(T), args_exprs...)
 end
 
 function quadgk(f, a, b; rtol=_rtol, atol=nothing)::Tuple{Float64,Float64}
@@ -203,14 +242,13 @@ Options(;
     ϕ_algo = ϕTRAPZ,
 ) = Options(rtol, Q_cut, Mth, incl_rcbulk, ϕ_algo)
 const _opt = Options()
-Options(rtol, opt::Options) = Options(rtol, exposestruct(opt)[2:end]...)
 
 const ΣLEPSPIN = 1
 const ΔLEPSPIN = 2
 
 function _DIS_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, μ², opt::Options=_opt,
         lepspin_mode::Int=0)::Float64
-    xB, y, Q², λ, SL, ε = let v=var; v.xB, v.y, v.Q², v.λ, v.SL, v.ε end
+    @unpack var xB y Q² λ SL ε
     return (y / Q²) *
         2/( y * Q² ) * y^2/2(1-ε) *
         sum(i -> quark_charge[i]^2 * (
@@ -236,9 +274,7 @@ end
 
 function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Float64
-    ( _, Mh, xB, y, Q², λ, _, SL, cosϕS, sinϕS, zh, cosϕh, sinϕh, PhT²,
-        γ², ε, _, ST², qT², _, _, _, _
-    ) = exposestruct(var)
+    @unpack var Mh xB y Q² λ SL cosϕS sinϕS zh cosϕh sinϕh PhT² γ² ε ST² qT²
     Fargs = (xB, Q², zh, qT², μ², opt.rtol)
     return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) /
             √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * (
@@ -357,7 +393,7 @@ DIS `dσ /( dxB dQ² dϕS )/ αEM²` at LO with radiative corrections.
 function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
     @check_dis_threshold(var, opt.Mth)
-    y, Q², λ = let v=var; v.y, v.Q², v.λ end
+    @unpack var y Q² λ
     x̂sec(ξ,ζ, lepspin_mode) = let
         v̂ar = get_sidis_hat_var(DisVar(var), ξ, ζ)
         if v̂ar.Q² < opt.Q_cut^2 return 0.0 end
@@ -366,7 +402,7 @@ function DISRC_xsec_xB_Q²_ϕS(data::SidisData, var::SidisVar, rc::RCData, μ²,
     end
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
-    _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
+    @unpack rc fl Ifl gl Igl Dl IDl
     return (
         + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Σx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk)
@@ -378,10 +414,10 @@ end
 
 function _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Function
-    y, Q², γ², Mh, zh, PhT² = let v=var; v.y, v.Q², v.γ², v.Mh, v.zh, v.PhT² end
+    @unpack var y Q² γ² Mh zh PhT²
     return (ξ, ζ) -> let
         v̂ar = get_sidis_hat_var(var, ξ, ζ)
-        ŷ, Q̂², γ̂², ẑh, P̂hT² = let v=v̂ar; v.y, v.Q², v.γ², v.zh, v.PhT² end
+        @unpack v̂ar y=>ŷ Q²=>Q̂² γ²=>γ̂² zh=>ẑh PhT²=>P̂hT²
         if Q̂² < opt.Q_cut^2 return 0.0 end
         return ξ^2 * ( y /( ξ * ζ - (1 - y) ) )^3 *
                 √( 1 - γ̂² *( Mh^2 + P̂hT² )/( ẑh^2 * Q̂² ) ) /
@@ -401,7 +437,7 @@ function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar
     x̂sec(ξ,ζ, lepspin_mode) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt, lepspin_mode)(ξ,ζ)
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
     Δx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΔLEPSPIN)
-    _, fl, Ifl, gl, Igl, Dl, IDl = exposestruct(rc)
+    @unpack rc fl Ifl gl Igl Dl IDl
     λ = var.λ
     return (
         + RC_conv_xsec(ξ->fl(ξ,μ²), ξ->Ifl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
