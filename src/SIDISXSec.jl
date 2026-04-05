@@ -31,6 +31,7 @@ export get_sf_tmd, get_sf_coll
 
 export DIS_xsec_xB_Q²_ϕS             , DISRC_xsec_xB_Q²_ϕS
 export SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT², SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²
+export SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²
 export SIDIS_mul_xB_Q²_zh_PhT²       , SIDISRC_mul_xB_Q²_zh_PhT²
 export trapzϕ, trapzϕϕ
 export SIDISRC_Aϕh_xB_Q²_zh_PhT², SIDISRC_AϕSϕh_xB_Q²_zh_PhT²
@@ -160,12 +161,14 @@ end
 
 """
 Data for calculations of radiative corrections.
+- `ml`: lepton mass
 - `αEM(μ²)`
 - `fl(ξ, μ²)`, `Ifl(ξ, μ²)`
 - `gl(ξ, μ²)`, `Igl(ξ, μ²)`
 - `Dl(ζ, μ²)`, `IDl(ζ, μ²)`
 """
 struct RCData{F1,F2,F3,F4,F5,F6,F7}
+    ml  :: Float64
     αEM :: F1
     fl  :: F2
     Ifl :: F3
@@ -175,6 +178,7 @@ struct RCData{F1,F2,F3,F4,F5,F6,F7}
     IDl :: F7
 end
 const zerorc = RCData(
+    me,
     μ² -> 0.0,
     (ξ, μ²) -> 0.0,
     (ξ, μ²) -> 1.0,
@@ -189,6 +193,7 @@ function get_e⁻_data()::RCData
     gdata = get_qed_data("QED_electron_helicityDF_nlo")
     Ddata = get_qed_data("QED_electron_FF_nlo")
     return RCData(
+        me,
         μ² -> get_αEM(fdata, μ²),
         (ξ, μ²) -> get_qed_density(         fdata, 11, μ²)(ξ),
         (ξ, μ²) -> get_qed_density_integral(fdata, 11, μ²)(ξ),
@@ -203,6 +208,7 @@ function get_μ⁻_data()::RCData
     gdata = get_qed_data("QED_muon_helicityDF_nlo")
     Ddata = get_qed_data("QED_muon_FF_nlo")
     return RCData(
+        mμ,
         μ² -> get_αEM(fdata, μ²),
         (ξ, μ²) -> get_qed_density(         fdata, 13, μ²)(ξ),
         (ξ, μ²) -> get_qed_density_integral(fdata, 13, μ²)(ξ),
@@ -232,15 +238,19 @@ struct Options
     Q_cut :: Float64
     Mth   :: Float64
     incl_rcbulk :: Bool
+    use_rcLL :: Bool
     ϕ_algo :: Int
+    use_std_formula :: Bool # use the cross section formula in [Bacchetta:2006tn]
 end
 Options(;
     rtol  = _rtol,
     Q_cut = 0.0,
     Mth   = Mp + Mπ,
     incl_rcbulk = true,
+    use_rcLL = false,
     ϕ_algo = ϕTRAPZ,
-) = Options(rtol, Q_cut, Mth, incl_rcbulk, ϕ_algo)
+    use_std_formula = false,
+) = Options(rtol, Q_cut, Mth, incl_rcbulk, use_rcLL, ϕ_algo, use_std_formula)
 const _opt = Options()
 
 const ΣLEPSPIN = 1
@@ -275,9 +285,12 @@ end
 function _SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, μ²,
         opt::Options=_opt, lepspin_mode::Int=0)::Float64
     @unpack var Mh xB y Q² λ SL cosϕS sinϕS zh cosϕh sinϕh PhT² γ² ε ST² qT²
-    Fargs = (xB, Q², zh, qT², μ², opt.rtol)
-    return (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) /
-            √( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) * (
+    Fargs = opt.use_std_formula ?
+        (xB, Q², zh, get_qT²(zh, PhT²), μ², opt.rtol) :
+        (xB, Q², zh, qT², μ², opt.rtol)
+    prefac = (y / Q²) * 1/( xB * y * Q² ) * y^2/2(1-ε) * (1+γ²/2xB) *
+        ( opt.use_std_formula ? 1 : 1/√( 1 - γ² *( Mh^2 + PhT² )/( zh^2 * Q² ) ) )
+    return prefac * (
         + ( lepspin_mode == ΔLEPSPIN ? 0 :
         + (
             + ε * sf.FUUL(Fargs...)
@@ -433,6 +446,7 @@ SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with radiative correction
 """
 function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
+    if opt.use_rcLL return SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, rc, μ², opt) end
     @check_sidis_threshold(var, opt.Mth)
     x̂sec(ξ,ζ, lepspin_mode) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt, lepspin_mode)(ξ,ζ)
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
@@ -445,6 +459,28 @@ function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar
         + ( iszero(λ) ? 0 : λ *
           RC_conv_xsec(ξ->gl(ξ,μ²), ξ->Igl(ξ,μ²), ζ->Dl(ζ,μ²), ζ->IDl(ζ,μ²),
             Δx̂sec, var, opt.Mth, opt.rtol, opt.incl_rcbulk) )
+    )
+end
+"""
+    SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+        opt::Options=_opt)::Float64
+
+SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with first-order leading-log radiative corrections.
+"""
+function SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+        opt::Options=_opt)::Float64
+    @check_sidis_threshold(var, opt.Mth)
+    Ĥcorner    =  SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(  sf, var, μ², opt)
+    Ĥedge(ξ,ζ) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt)(ξ,ζ)
+    ξmin, ζmin = get_ξζmin(var, opt.Mth)
+    # f = g at 𝒪(αL)
+    Pll(x) = (1+x^2)/(1-x)
+    IPll(xm) = - 2log(1-xm) - xm*(2+xm)/2
+    @unpack rc ml αEM
+    return Ĥcorner + αEM(ml^2)/2π * log(μ²/ml^2) * (
+        + ( 4/3 - IPll(ξmin) - IPll(ζmin) ) * Ĥcorner
+        + quadgk(ξ -> Pll(ξ) * ( Ĥedge(ξ,1.) - Ĥcorner ), ξmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
+        + quadgk(ζ -> Pll(ζ) * ( Ĥedge(1.,ζ) - Ĥcorner ), ζmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
     )
 end
 
