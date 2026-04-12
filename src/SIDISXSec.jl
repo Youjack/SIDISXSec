@@ -137,7 +137,7 @@ function get_sidis_data(M, fname::String, Mh, Dname::String;
     fdata = get_qcd_data(fname)
     Ddata = get_qcd_data(Dname)
     return SidisData(
-        Float64(M/A), max(Mπ, Float64(Mh)),
+        Float64(M/A), Float64(Mh),
         μ² -> get_αs(fdata, μ²),
         (id, x, μ²) -> get_qcd_density(fdata, id, μ², conjN, A, Z)(x),
         (id, z, μ²) -> get_qcd_density(Ddata, id, μ², conjh)(z),
@@ -149,7 +149,7 @@ function get_polsidis_data(M, fname::String, gname::String, Mh, Dname::String;
     gdata = get_qcd_data(gname)
     Ddata = get_qcd_data(Dname)
     return SidisData(
-        Float64(M/A), max(Mπ, Float64(Mh)),
+        Float64(M/A), Float64(Mh),
         μ² -> get_αs(fdata, μ²),
         (id, x, μ²) -> get_qcd_density(fdata, id, μ², conjN, A, Z)(x),
         (id, x, μ²) -> get_qcd_density(gdata, id, μ², conjN, A, Z)(x),
