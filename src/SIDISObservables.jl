@@ -43,7 +43,7 @@ function trapzϕ(f, rtol=_rtol)::Float64
     @warn "trapzϕ: rerr = $rerr, sampled points: $(_trapzNstart^(_trapznmax+1))"
     return 2π * set
 end
-const _trapzϕϕ0 = [
+#= const _trapzϕϕ0 = [
     tuple( i * 2π/_trapzNstart, j * 2π/_trapzNstart )
     for j ∈ 0:_trapzNstart-1, i ∈ 0:_trapzNstart-1
 ]
@@ -73,7 +73,7 @@ function trapzϕϕ(f, rtol=_rtol)::Float64
     end
     @warn "trapzϕϕ: rerr = $rerr"
     return (2π)^2 * set
-end
+end =#
 
 """
     SIDIS_mul_xB_Q²_zh_PhT²(data::SidisData, sf::SidisStructFunc,
@@ -162,11 +162,13 @@ function SIDISRC_AϕSϕh_xB_Q²_zh_PhT²(trig::Function,
         opt::Options=_opt; normalize=true)::Float64
     varϕ(ϕS,ϕh) = change_sidis_var_ϕ(var, ϕS, ϕh)
     opt′ = @pack opt::Options rtol=>opt.rtol/10
-    numr = trapzϕ(ϕS -> trapzϕ(ϕh ->
+    # Accuray of ϕh integral is usually harder to control,
+    # so it is evaluated in the outer loop with higher accuracy requirement.
+    numr = trapzϕ(ϕh -> trapzϕ(ϕS ->
         trig(ϕS,ϕh) * SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕS,ϕh), rc, μ², opt′),
-        opt.rtol), opt.rtol)
-    denom = normalize ? trapzϕ(ϕS -> trapzϕ(ϕh ->
+        opt.rtol), opt′.rtol)
+    denom = normalize ? trapzϕ(ϕh -> trapzϕ(ϕS ->
         SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, varϕ(ϕS,ϕh), rc, μ², opt′),
-        opt.rtol), opt.rtol)/2 : 1
+        opt.rtol), opt′.rtol)/2 : 1
     return numr / denom
 end
