@@ -30,11 +30,6 @@ SidisStructFunc(FUUL, FUUT, FUUcosϕh, FUUcos2ϕh) = SidisStructFunc(
 SidisStructFunc(FUUT) = SidisStructFunc(zerosf, FUUT, zerosf, zerosf)
 get_sf_zero() = SidisStructFunc(zerosf)
 
-#= TMD factorization ==============================================================================#
-
-include("SIDISStructFunc/TMD.jl")
-using .TMD
-
 include("SIDISStructFunc/Anselmino2014.jl")
 using .Anselmino2014
 
@@ -43,25 +38,3 @@ using .Barone2015
 
 include("SIDISStructFunc/Bastami2019.jl")
 using .Bastami2019
-
-include("SIDISStructFunc/SF_SV19.jl")
-using .SF_SV19
-
-#= Collinear factorization ========================================================================#
-
-include("SIDISStructFunc/Coll.jl")
-using .Coll
-
-include("SIDISStructFunc/NLPColl/NLPColl.jl")
-using .NLPColl
-
-#= Matching prescription ==========================================================================#
-
-include("SIDISStructFunc/WY.jl")
-using .WY
-
-include("SIDISStructFunc/InEW.jl")
-using .InEW
-
-include("SIDISStructFunc/AdHocMatch.jl")
-using .AdHocMatch

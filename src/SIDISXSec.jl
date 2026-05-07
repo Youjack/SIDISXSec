@@ -27,7 +27,6 @@ export get_sidis_hat_var
 export qed_conv
 
 export SidisStructFunc
-export get_sf_tmd, get_sf_coll
 
 export DIS_xsec_xB_Q²_ϕS             , DISRC_xsec_xB_Q²_ϕS
 export SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT², SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²
