@@ -237,7 +237,7 @@ struct Options
     Q_cut :: Float64
     Mth   :: Float64
     incl_rcbulk :: Bool
-    use_rcLL :: Bool
+    use_rcLL :: Int # 0: RC, 1: RCLL, 2: RCLL′
     ϕ_algo :: Int
     use_std_formula :: Bool # use the cross section formula in [Bacchetta:2006tn]
 end
@@ -246,7 +246,7 @@ Options(;
     Q_cut = 0.0,
     Mth   = Mp + Mπ,
     incl_rcbulk = true,
-    use_rcLL = false,
+    use_rcLL = 0,
     ϕ_algo = ϕTRAPZ,
     use_std_formula = false,
 ) = Options(rtol, Q_cut, Mth, incl_rcbulk, use_rcLL, ϕ_algo, use_std_formula)
@@ -445,7 +445,8 @@ SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with radiative correction
 """
 function SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
         opt::Options=_opt)::Float64
-    if opt.use_rcLL return SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, rc, μ², opt) end
+    if     opt.use_rcLL == 1 return SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²( sf, var, rc, μ², opt)
+    elseif opt.use_rcLL == 2 return SIDISRCLL′_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, rc, μ², opt) end
     @check_sidis_threshold(var, opt.Mth)
     x̂sec(ξ,ζ, lepspin_mode) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt, lepspin_mode)(ξ,ζ)
     Σx̂sec(ξ,ζ) = x̂sec(ξ,ζ, ΣLEPSPIN)
@@ -480,6 +481,29 @@ function SIDISRCLL_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisV
         + ( 4/3 - IPll(ξmin) - IPll(ζmin) ) * Ĥcorner
         + quadgk(ξ -> Pll(ξ) * ( Ĥedge(ξ,1.) - Ĥcorner ), ξmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
         + quadgk(ζ -> Pll(ζ) * ( Ĥedge(1.,ζ) - Ĥcorner ), ζmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
+    )
+end
+"""
+    SIDISRCLL′_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+        opt::Options=_opt)::Float64
+
+SIDIS `dσ /( dxB dQ² dϕS dzh dϕh dPhT² )/ αEM²` with first-order leading-log and
+    non-log (from LDF and LFF) radiative corrections.
+"""
+function SIDISRCLL′_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf::SidisStructFunc, var::SidisVar, rc::RCData, μ²,
+        opt::Options=_opt)::Float64
+    @check_sidis_threshold(var, opt.Mth)
+    Ĥcorner    =  SIDIS_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(  sf, var, μ², opt)
+    Ĥedge(ξ,ζ) = _SIDISRC_xsec_xB_Q²_ϕS_zh_ϕh_PhT²(sf, var, μ², opt)(ξ,ζ)
+    ξmin, ζmin = get_ξζmin(var, opt.Mth)
+    @unpack rc ml αEM
+    L = log(μ²/ml^2)
+    Pll′(x) = (1+x^2)/(1-x) *( L - 2log(1-x) - 1 )
+    IPll′(xm) = ( - 2log(1-xm) - xm*(2+xm)/2 ) * (L-1) - xm*(6+xm)/2 + (-3+2xm+xm^2)*log(1-xm) + 2log(1-xm)^2
+    return Ĥcorner + αEM(ml^2)/2π * (
+        + ( 4/3 * L - IPll′(ξmin) - IPll′(ζmin) ) * Ĥcorner
+        + quadgk(ξ -> Pll′(ξ) * ( Ĥedge(ξ,1.) - Ĥcorner ), ξmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
+        + quadgk(ζ -> Pll′(ζ) * ( Ĥedge(1.,ζ) - Ĥcorner ), ζmin,1, rtol=opt.rtol, atol=opt.rtol*abs(Ĥcorner))[1]
     )
 end
 
